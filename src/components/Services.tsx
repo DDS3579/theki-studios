@@ -1,27 +1,59 @@
-import { useEffect, useRef } from 'react';
-import { services, copy } from '../content';
+import { services, copy, type Chapter } from '../content';
+import { useScrollReveal } from '../lib/useScrollReveal';
+
+// B9.8: Scroll to chapter helper
+function scrollToChapter(chapter: Chapter) {
+  const element = document.getElementById(`chapter-${chapter}`);
+  if (!element) return;
+
+  const headerHeight = 80;
+  const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
+  const offsetPosition = elementPosition - headerHeight;
+
+  window.scrollTo({
+    top: offsetPosition,
+    behavior: 'smooth'
+  });
+}
+
+// B9.8: Scroll to contact with service preselect
+function scrollToContactWithService(serviceId: string) {
+  const contactSection = document.getElementById('contact');
+  if (!contactSection) return;
+
+  const headerHeight = 80;
+  const elementPosition = contactSection.getBoundingClientRect().top + window.pageYOffset;
+  const offsetPosition = elementPosition - headerHeight;
+
+  window.scrollTo({
+    top: offsetPosition,
+    behavior: 'smooth'
+  });
+
+  // B9.8: Preselect service after scroll
+  setTimeout(() => {
+    const select = document.getElementById('service') as HTMLSelectElement;
+    if (select) {
+      select.value = serviceId;
+      select.focus();
+    }
+  }, 500);
+}
 
 export default function Services() {
-  const sectionRef = useRef<HTMLElement>(null);
+  const sectionRef = useScrollReveal<HTMLElement>(0.1);
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.1 }
-    );
-
-    const reveals = sectionRef.current?.querySelectorAll('.reveal');
-    reveals?.forEach((el) => observer.observe(el));
-
-    return () => observer.disconnect();
-  }, []);
+  const handleServiceClick = (e: React.MouseEvent, service: typeof services[0]) => {
+    e.preventDefault();
+    
+    if (service.chapter) {
+      // B9.8: Scroll to chapter
+      scrollToChapter(service.chapter);
+    } else {
+      // B9.8: Scroll to contact with service preselected
+      scrollToContactWithService(service.id);
+    }
+  };
 
   return (
     <section
@@ -55,6 +87,7 @@ export default function Services() {
             >
               <a
                 href={service.chapter ? `#chapter-${service.chapter}` : '#contact'}
+                onClick={(e) => handleServiceClick(e, service)}
                 className="grid grid-cols-12 gap-4 md:gap-8 py-6 md:py-8 items-baseline hover:bg-card/50 transition-colors duration-200 px-2 -mx-2"
               >
                 {/* Number */}

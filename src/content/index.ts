@@ -55,6 +55,7 @@ export interface HeroCopy {
 }
 
 export interface Copy {
+  studioName: string;
   hero: HeroCopy;
   chapters: Record<Chapter, { title: string; subtitle: string }>;
   contactHeading: string;
@@ -84,6 +85,7 @@ export const contact = {
 
 // Copy
 export const copy: Copy = {
+  studioName: 'Theki Studios',
   hero: {
     label: 'Photography & film',
     headlineLines: ['Frames', 'worth', 'keeping.'],

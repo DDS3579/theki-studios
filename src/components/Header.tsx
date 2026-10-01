@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { contact, socialLinks } from '../content';
+import { contact, socialLinks, copy } from '../content';
 import { lockScroll, unlockScroll } from '../lib/scrollLock';
 
 export default function Header() {
@@ -111,7 +111,7 @@ export default function Header() {
                 scrolled ? 'text-ink' : textColor
               }`}
             >
-              Theki Studios
+              {copy.studioName}
             </a>
 
             {/* Desktop nav */}
@@ -180,7 +180,7 @@ export default function Header() {
         <div className="flex flex-col h-full p-6 pt-8">
           <div className="flex items-center justify-between mb-16">
             <span className="font-display text-xl font-bold uppercase tracking-tight text-ink">
-              Theki Studios
+              {copy.studioName}
             </span>
             <button
               onClick={() => setMenuOpen(false)}

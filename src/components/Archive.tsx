@@ -16,8 +16,8 @@ import { useScrollReveal } from '../lib/useScrollReveal';
 import { lockScroll, unlockScroll } from '../lib/scrollLock';
 
 export default function Archive() {
-  // B8.7: Use shared reveal hook
-  const sectionRef = useScrollReveal(0.05);
+  // B8.7 & B9.14: Use shared reveal hook with generic type
+  const sectionRef = useScrollReveal<HTMLElement>(0.05);
   
   // B8.4: Lightbox state with refs for stable handlers
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
