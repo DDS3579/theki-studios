@@ -92,8 +92,22 @@ export default function Stage({ onFailure }: StageProps) {
 
     renderer.setQuality(caps.tier, caps.dpr, caps.enableBlur);
 
-    const allPhotos = chapters.flatMap(ch => getFeaturedPhotos(ch));
-    allPhotos.forEach(photo => renderer.loadTexture(photo.id, getPhotoSrc(photo, 'texture')));
+    // B4.4: Set up failure callback
+    renderer.setOnTooManyFailures(() => {
+      onFailure();
+    });
+
+    // B4.4: Queue texture loads with priority (first chapter first)
+    chapters.forEach((chapter, chapterIndex) => {
+      const chapterPhotos = getFeaturedPhotos(chapter);
+      chapterPhotos.forEach(photo => {
+        renderer.queueTextureLoad(
+          photo.id,
+          getPhotoSrc(photo, 'texture'),
+          chapterIndex // Priority: 0 for first chapter, 1 for second, etc.
+        );
+      });
+    });
 
     return () => {
       renderer.dispose();
@@ -291,10 +305,8 @@ export default function Stage({ onFailure }: StageProps) {
 
           rendererRef.current.setPlanes(planes);
           
-          // B3.4: Blur function based on focus depth
-          const blurFn = (depth: number) => circleOfConfusion(depth, focusDepth, 1.0, 1.5);
-          
-          const frameTime = rendererRef.current.render(camera, blurFn, PLANE_SPACING);
+          // B4: Pass focusDepth and dt to renderer
+          const frameTime = rendererRef.current.render(camera, focusDepth, PLANE_SPACING, dt);
           
           if (ladderRef.current) {
             ladderRef.current.recordFrame(frameTime);
