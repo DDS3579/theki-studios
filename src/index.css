@@ -170,6 +170,7 @@
 /* B0.6: removed @custom-variant stage (unused) */
 /* B0.6: removed img { image-rendering: auto } (pointless) */
 /* B0.6: removed .cold-open from print rule (element removed in B7.3) */
+/* B7.3: Removed cold-open from print rule */
 @media print {
   .stage-canvas,
   .skip-link {
