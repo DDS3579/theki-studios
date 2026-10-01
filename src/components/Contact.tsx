@@ -96,7 +96,7 @@ export default function Contact() {
     <section
       ref={sectionRef}
       id="contact"
-      className="bg-paper py-16 md:py-24 border-t border-border"
+      className="bg-paper py-16 md:py-24 border-t border-border scroll-mt-20 md:scroll-mt-24"
       aria-labelledby="contact-heading"
     >
       <div className="max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)]">

@@ -27,7 +27,7 @@ export default function Services() {
     <section
       ref={sectionRef}
       id="services"
-      className="bg-paper py-16 md:py-28 border-t border-border"
+      className="bg-paper py-16 md:py-28 border-t border-border scroll-mt-20 md:scroll-mt-24"
       aria-labelledby="services-heading"
     >
       <div className="max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)]">

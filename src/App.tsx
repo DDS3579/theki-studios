@@ -45,7 +45,7 @@ export default function App() {
         <Header />
 
         {/* Main content */}
-        <main id="main-content">
+        <main id="main-content" tabIndex={-1}>
           {/* Hero - the first frame */}
           <Hero />
 

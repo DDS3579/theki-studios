@@ -80,7 +80,7 @@ export default function Archive() {
     <section
       ref={sectionRef}
       id="archive"
-      className="bg-paper py-16 md:py-28"
+      className="bg-paper py-16 md:py-28 scroll-mt-20 md:scroll-mt-24"
       aria-labelledby="archive-heading"
     >
       <div className="max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)]">
