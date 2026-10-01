@@ -125,13 +125,6 @@ export function getChapterProgress(journey: JourneyState, chapter: Chapter, glob
   return Math.max(0, Math.min(1, (globalP - range.startP) / chapterRange));
 }
 
-// B3.2: Get the chapter index for a given progress
-export function getChapterAtProgress(journey: JourneyState, p: number): Chapter {
-  const seg = getSegmentAt(journey, p);
-  return seg.chapter;
-}
 
-// Get chapter index
-export function getChapterIndex(chapter: Chapter): number {
-  return chapters.indexOf(chapter);
-}
+
+

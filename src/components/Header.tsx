@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { contact, socialLinks, copy } from '../content';
+import { socialLinks, copy } from '../content';
 import { lockScroll, unlockScroll } from '../lib/scrollLock';
 
 export default function Header() {

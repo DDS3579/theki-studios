@@ -10,8 +10,10 @@ export interface PlaneRect {
   side: 'left' | 'right' | 'center';
 }
 
-// B3.5: Compute visible area at a given distance from camera
-export function getVisibleArea(
+
+
+// Helper function to compute visible area at a given distance from camera
+function getVisibleArea(
   distance: number,
   fov: number, // Vertical FOV in radians
   aspect: number // Screen aspect ratio (width/height)
@@ -28,7 +30,7 @@ export function computePlaneRect(
   fov: number, // Vertical FOV in radians
   screenAspect: number, // Screen aspect ratio
   frameIndex: number,
-  totalFrames: number
+  _totalFrames: number
 ): PlaneRect {
   const visible = getVisibleArea(distance, fov, screenAspect);
   

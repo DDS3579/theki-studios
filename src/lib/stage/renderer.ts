@@ -77,7 +77,6 @@ export class StageRenderer {
   private canvas: HTMLCanvasElement;
   private program: WebGLProgram | null = null;
   private textures: Map<string, TextureEntry> = new Map();
-  private planes: Plane[] = [];
   private sortedPlanes: Plane[] = []; // B4.1: Pre-sorted cache
   private vao: WebGLVertexArrayObject | null = null;
   private vbo: WebGLBuffer | null = null; // B4.10: Store buffers
@@ -228,7 +227,7 @@ export class StageRenderer {
     return this._state;
   }
 
-  setQuality(tier: RenderTier, dpr: number, enableBlur: boolean) {
+  setQuality(_tier: RenderTier, dpr: number, enableBlur: boolean) {
     this.currentDpr = dpr;
     this.enableBlur = enableBlur;
     this.markDirty();
@@ -457,7 +456,6 @@ export class StageRenderer {
   }
 
   setPlanes(planes: Plane[]) {
-    this.planes = planes;
     // B4.1: Sort once (depth order is static)
     this.sortedPlanes = [...planes].sort((a, b) => b.depth - a.depth);
     this.markDirty();

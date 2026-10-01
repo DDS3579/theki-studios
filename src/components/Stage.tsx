@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import { chapters, getFeaturedPhotos, copy, flags, getPhotoSrc, getAspect, type Chapter, type Photo } from '../content';
 import { buildJourney, getSegmentAt, getLocalProgress } from '../lib/stage/journey';
 import { computeFocusState, circleOfConfusion } from '../lib/stage/focus';
-import { createPointerParallax, setParallaxTarget, easeParallax, cameraFor } from '../lib/stage/camera';
+import { createPointerParallax, setParallaxTarget, cameraFor } from '../lib/stage/camera';
 import { computePlaneRect, projectPlaneToScreen } from '../lib/stage/layout';
 import { StageRenderer, STAGE_FOV } from '../lib/stage/renderer';
 import { capabilityStore, RuntimeLadder } from '../lib/gate';
@@ -126,7 +126,6 @@ export default function Stage({ onFailure }: StageProps) {
   
   // Visibility and animation state
   const isVisibleRef = useRef(true);
-  const lastFrameTimeRef = useRef(performance.now());
   const ladderRef = useRef<RuntimeLadder | null>(null);
   const capsRef = useRef(capabilityStore.get());
 

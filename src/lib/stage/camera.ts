@@ -26,7 +26,7 @@ export function createPointerParallax(): PointerParallax {
 
 // B3.9: Set target from pointer position (called on pointer move)
 export function setParallaxTarget(
-  parallax: PointerParallax,
+  _parallax: PointerParallax,
   pointerX: number, // -1 to 1
   pointerY: number  // -1 to 1
 ): PointerParallax {
@@ -56,10 +56,7 @@ export function easeParallax(
   };
 }
 
-// Reset parallax when pointer leaves window
-export function resetParallax(): PointerParallax {
-  return { yaw: 0, offsetX: 0, offsetY: 0 };
-}
+
 
 // B3.2 & B3.3: Camera follows focus position with chapter-specific movements
 export function cameraFor(

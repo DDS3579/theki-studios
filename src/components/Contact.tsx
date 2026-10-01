@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { copy, services, contact, socialLinks } from '../content';
 import { useScrollReveal } from '../lib/useScrollReveal';
 

@@ -1,4 +1,4 @@
-import { services, copy, type Chapter } from '../content';
+import { services, type Chapter } from '../content';
 import { useScrollReveal } from '../lib/useScrollReveal';
 
 // B9.8: Scroll to chapter helper
