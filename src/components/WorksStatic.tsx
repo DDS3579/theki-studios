@@ -25,7 +25,7 @@ function StaticChapter({ chapter, index }: { chapter: Chapter; index: number }) 
       {/* Title card */}
       <div className="max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)] py-16 md:py-24">
         <div className="reveal">
-          <p className="font-mono text-[10px] text-stage-muted uppercase tracking-[0.25em] mb-4">
+          <p className="font-mono text-[11px] text-stage-muted uppercase tracking-[0.25em] mb-4">
             {String(index + 1).padStart(2, '0')} — {String(chapters.length).padStart(2, '0')}
           </p>
           {/* B9.10: Title card with smaller minimum font size */}
@@ -79,11 +79,11 @@ function StaticChapter({ chapter, index }: { chapter: Chapter; index: number }) 
                 
                 {/* Caption bar */}
                 <div className={`mt-2 flex items-center justify-between ${isPortrait ? 'md:max-w-[50%] mx-auto md:mx-0' : ''}`}>
-                  <span className="font-mono text-[10px] text-stage-muted uppercase tracking-[0.15em]">
+                  <span className="font-mono text-[11px] text-stage-muted uppercase tracking-[0.15em]">
                     {copy.chapters[chapter].title} {String(i + 1).padStart(2, '0')}/{String(photos.length).padStart(2, '0')}
                   </span>
                   {flags.SHOW_CAPTURE && photo.capture && (
-                    <span className="font-mono text-[10px] text-stage-muted hidden md:block">
+                    <span className="font-mono text-[11px] text-stage-muted hidden md:block">
                       {[
                         photo.capture.focal,
                         photo.capture.aperture,

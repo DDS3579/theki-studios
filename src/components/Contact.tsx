@@ -149,7 +149,7 @@ export default function Contact() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-16">
           {/* Left: heading, text, and contact details */}
           <div className="md:col-span-5 reveal">
-            <p className="font-mono text-[10px] text-ink-soft uppercase tracking-[0.2em] mb-3">
+            <p className="font-mono text-[11px] text-ink-soft uppercase tracking-[0.2em] mb-3">
               Contact
             </p>
             <h2
@@ -191,7 +191,7 @@ export default function Contact() {
             {/* Social links */}
             {(socialLinks.instagram || socialLinks.facebook || socialLinks.youtube || contact.whatsapp) && (
               <div className="mt-8 pt-6 border-t border-border">
-                <p className="font-mono text-[10px] text-ink-soft uppercase tracking-widest mb-3">
+                <p className="font-mono text-[11px] text-ink-soft uppercase tracking-widest mb-3">
                   Follow us
                 </p>
                 <div className="flex flex-wrap gap-4">
@@ -367,7 +367,7 @@ export default function Contact() {
                 {/* Date (optional) */}
                 <div>
                   <label htmlFor="date" className="block font-mono text-[11px] text-ink-soft uppercase tracking-widest mb-2">
-                    Date <span className="text-ink-soft/50">(optional)</span>
+                    Date <span className="text-ink-soft">(optional)</span>
                   </label>
                   <input
                     type="date"

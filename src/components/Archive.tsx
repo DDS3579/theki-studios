@@ -141,7 +141,7 @@ export default function Archive() {
       <div className="max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)]">
         {/* Section header */}
         <div className="reveal mb-12 md:mb-20">
-          <p className="font-mono text-[10px] text-ink-soft uppercase tracking-[0.25em] mb-4">
+          <p className="font-mono text-[11px] text-ink-soft uppercase tracking-[0.25em] mb-4">
             Archive
           </p>
           <h2
@@ -253,7 +253,7 @@ export default function Archive() {
                   </p>
                 )}
                 {flags.SHOW_CAPTURE && lightboxPhoto.capture && (
-                  <p className="font-mono text-[10px] text-stage-muted">
+                  <p className="font-mono text-[11px] text-stage-muted">
                     {[
                       lightboxPhoto.capture.focal,
                       lightboxPhoto.capture.aperture,
@@ -263,7 +263,7 @@ export default function Archive() {
                   </p>
                 )}
                 {/* B8.5: Counter */}
-                <p className="font-mono text-[10px] text-stage-muted">
+                <p className="font-mono text-[11px] text-stage-muted">
                   {lightboxIndex + 1} / {allPhotosInDisplayOrder.length}
                 </p>
               </div>

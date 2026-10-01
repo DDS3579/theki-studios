@@ -21,14 +21,14 @@ export default function Footer() {
               <div className="mt-2 space-y-1">
                 {contact.email && (
                   <p className="font-sans text-xs text-ink-soft">
-                    <a href={`mailto:${contact.email}`} className="hover:text-brass transition-colors">
+                    <a href={`mailto:${contact.email}`} className="inline-block py-1 hover:text-brass transition-colors">
                       {contact.email}
                     </a>
                   </p>
                 )}
                 {contact.phone && (
                   <p className="font-sans text-xs text-ink-soft">
-                    <a href={`tel:${contact.phone.replace(/[^0-9+]/g, '')}`} className="hover:text-brass transition-colors">
+                    <a href={`tel:${contact.phone.replace(/[^0-9+]/g, '')}`} className="inline-block py-1 hover:text-brass transition-colors">
                       {contact.phone}
                     </a>
                   </p>
@@ -43,7 +43,7 @@ export default function Footer() {
               {socialLinks.instagram && (
                 <a
                   href={socialLinks.instagram}
-                  className="font-sans text-sm text-ink-soft hover:text-brass transition-colors"
+                  className="font-sans text-sm text-ink-soft hover:text-brass transition-colors py-1"
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Follow on Instagram"
@@ -54,7 +54,7 @@ export default function Footer() {
               {socialLinks.facebook && (
                 <a
                   href={socialLinks.facebook}
-                  className="font-sans text-sm text-ink-soft hover:text-brass transition-colors"
+                  className="font-sans text-sm text-ink-soft hover:text-brass transition-colors py-1"
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Follow on Facebook"
@@ -65,7 +65,7 @@ export default function Footer() {
               {socialLinks.youtube && (
                 <a
                   href={socialLinks.youtube}
-                  className="font-sans text-sm text-ink-soft hover:text-brass transition-colors"
+                  className="font-sans text-sm text-ink-soft hover:text-brass transition-colors py-1"
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Watch on YouTube"
@@ -80,7 +80,7 @@ export default function Footer() {
           <a
             href="#top"
             onClick={handleBackToTop}
-            className="font-mono text-[11px] text-ink-soft uppercase tracking-widest hover:text-brass transition-colors"
+            className="font-mono text-[11px] text-ink-soft uppercase tracking-widest hover:text-brass transition-colors py-2"
           >
             Back to top ↑
           </a>

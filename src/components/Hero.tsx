@@ -94,7 +94,7 @@ export default function Hero() {
         {/* B7.7: Changed transition-all to specific properties */}
         <div className={`transition-[opacity,transform] duration-700 ease-[var(--ease-focus)] ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
           {/* B1.4: label from content */}
-          <p className="font-mono text-[10px] md:text-xs text-stage-muted uppercase tracking-[0.25em] mb-5 md:mb-7">
+          <p className="font-mono text-[11px] md:text-xs text-stage-muted uppercase tracking-[0.25em] mb-5 md:mb-7">
             {copy.hero.label}
           </p>
 
@@ -160,14 +160,14 @@ export default function Hero() {
       {/* Bottom strip - frame counts */}
       <div className="absolute bottom-0 left-0 right-0 border-t border-stage-text/[0.08]">
         <div className="max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)] py-3 flex items-center justify-between">
-          <div className="flex gap-4 md:gap-8 font-mono text-[9px] md:text-[10px] text-stage-muted uppercase tracking-[0.15em]">
+          <div className="flex gap-4 md:gap-8 font-mono text-[11px] md:text-xs text-stage-muted uppercase tracking-[0.15em]">
             {chapters.map(ch => (
               <span key={ch}>
                 {ch}: {getPhotosByChapter(ch).length}
               </span>
             ))}
           </div>
-          <div className="font-mono text-[9px] md:text-[10px] text-stage-muted uppercase tracking-[0.15em]">
+          <div className="font-mono text-[11px] md:text-xs text-stage-muted uppercase tracking-[0.15em]">
             {totalFrames} frames
           </div>
         </div>
@@ -179,7 +179,7 @@ export default function Hero() {
         style={{ opacity: loaded ? 0.6 : 0 }}
         aria-hidden="true"
       >
-        <span className="font-mono text-[8px] text-stage-muted uppercase tracking-[0.2em]">Scroll</span>
+        <span className="font-mono text-[11px] text-stage-muted uppercase tracking-[0.2em]">Scroll</span>
         <div className="w-px h-8 bg-linear-to-b from-stage-muted to-transparent" />
       </div>
     </section>

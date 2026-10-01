@@ -51,10 +51,10 @@ src/
 - Mono: JetBrains Mono (data only)
 
 ### Key Rules
-- Brass is a mark, never a surface or text color
-- No gradients in UI (stage vignette lives in shader only)
+- Brass is primarily a mark (viewfinder, focus lock, progress ticks), used sparingly for hover states
+- Gradients used minimally: hero overlay for text legibility, dark-to-light transition strip
 - No custom cursor, particles, film grain, or scroll-jacking
-- Text never overlaps photograph pixels on the stage
+- Text on stage uses opacity fade to avoid overlapping focused photo
 
 ## Signature Systems
 
@@ -83,34 +83,45 @@ src/
 
 | Mode | Conditions | Rendering |
 |------|-----------|-----------|
-| A0 | Desktop, fine pointer, WebGL2, ≥4 cores, no reduced motion | Full WebGL with mip-blur |
-| A1 | Same but DPR > 2 | Mip-blur, capped DPR |
-| A2 | Same but lower spec | Crossfade with scale |
-| Static | Mobile, tablet, coarse pointer, reduced motion, saveData, no WebGL2 | DOM images with reveals |
+| A0 | Desktop, fine pointer, WebGL2, ≥4 cores, no reduced motion | Full WebGL with mip-blur, DPR ≤ 1.5 |
+| A1 | Desktop with higher DPR or fewer cores | WebGL with mip-blur, DPR ≤ 1.25 |
+| A2 | Desktop with lower specs | WebGL without blur, DPR = 1 |
+| Static | Mobile, tablet, coarse pointer, reduced motion, saveData, no WebGL2, or WebGL failure | DOM images with scroll reveals |
+
+Runtime ladder automatically downgrades tier based on frame times (p75 > 20ms).
 
 ## Performance Budgets
-- Route JS: ~59KB gzipped (target ≤120KB) ✓
-- CSS: ~7KB gzipped (target ≤20KB) ✓
+- Route JS: ~65KB gzipped (target ≤120KB) ✓
+- CSS: ~7.3KB gzipped (target ≤20KB) ✓
 - Fonts: loaded from Google Fonts CDN
-- Initial transfer: ~66KB excluding images ✓
+- Initial transfer: ~72KB excluding images ✓
+- Zero per-frame allocations in WebGL renderer
+- Dirty flag system prevents unnecessary renders
+- Shared ticker with intelligent sleep/wake
 
 ## Accessibility
-- WCAG AA contrast on all text
+- WCAG AA contrast on all text (minimum 11px font size)
 - Skip link to main content
 - Semantic landmarks (header, nav, main, section, footer)
-- Visible focus rings (2px brass, offset 2px)
-- aria-live for form status
+- Visible focus rings (2px brass, offset 2px) on all interactive elements
+- aria-live regions for form status and chapter announcements
 - All photos have meaningful alt text
 - Canvas and viewfinder marks are aria-hidden
-- Reduced motion: full static path, no animations
+- Reduced motion: full static path, no animations, immediate content display
+- All interactive elements have minimum 24x24px hit areas
+- Proper heading hierarchy (one h1, h2 per section, h3 below)
+- Keyboard navigation throughout (arrow keys in lightbox, Escape to close)
+- Form validation with focus management to first error
 
 ## Content Management
 
 ### Adding Photos
-1. Place images in a hosting service or CDN
-2. Add entries to `src/content/index.ts` in the `photos` array
-3. Required fields: `id`, `src`, `chapter`, `alt`, `aspect`, `featured`, `order`
-4. Optional: `caption`, `hero`, `capture` (focal, aperture, shutter, iso)
+1. Convert images to WebP at 800px, 1600px, and 2400px widths
+2. Place in `public/images/` with naming: `{baseName}-{width}.webp`
+3. Add entries to `src/content/index.ts` in the `photos` array
+4. Required fields: `id`, `baseName`, `chapter`, `alt`, `width`, `height`, `widths`, `featured`, `order`
+5. Optional: `caption`, `hero`, `capture` (focal, aperture, shutter, iso)
+6. Images automatically served with responsive srcset and proper sizing
 
 ### Adding a Chapter
 1. Add the chapter to the `Chapter` type union

@@ -21,7 +21,7 @@ const FrameCounter = memo(({ chapter, frameIndex, totalFrames }: { chapter: Chap
 const FocusIndicator = memo(({ locked }: { locked: boolean }) => (
   <div className="absolute top-6 right-6 flex items-center gap-2">
     <div className={`focus-lock ${locked ? 'locked' : 'hunting'}`} />
-    <span className="font-mono text-[10px] text-stage-muted uppercase tracking-[0.15em]">
+    <span className="font-mono text-[11px] text-stage-muted uppercase tracking-[0.15em]">
       {locked ? 'Locked' : 'Hunting'}
     </span>
   </div>
@@ -119,6 +119,10 @@ export default function Stage({ onFailure }: StageProps) {
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [titleOpacity, setTitleOpacity] = useState(0);
+  
+  // B10.7: Live region for chapter announcements
+  const [announcement, setAnnouncement] = useState('');
+  const previousChapterRef = useRef<Chapter>('weddings');
   
   // Visibility and animation state
   const isVisibleRef = useRef(true);
@@ -336,6 +340,13 @@ export default function Stage({ onFailure }: StageProps) {
         // Update discrete state only when changed (B5.1)
         if (segment.chapter !== currentChapter) {
           setCurrentChapter(segment.chapter);
+          // B10.7: Announce chapter change to screen readers
+          if (previousChapterRef.current !== segment.chapter) {
+            setAnnouncement(`Now viewing ${copy.chapters[segment.chapter].title}`);
+            previousChapterRef.current = segment.chapter;
+            // Clear announcement after 3 seconds
+            setTimeout(() => setAnnouncement(''), 3000);
+          }
         }
         if (segment.type === 'title') {
           if (!isTitleSegment) setIsTitleSegment(true);
@@ -522,6 +533,18 @@ export default function Stage({ onFailure }: StageProps) {
           aria-hidden="true"
         />
 
+        {/* B10.7: Live region for chapter announcements */}
+        {announcement && (
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="sr-only"
+          >
+            {announcement}
+          </div>
+        )}
+
         {/* Loading indicator (B5.12) */}
         {loading && <LoadingIndicator />}
 
@@ -581,7 +604,7 @@ export default function Stage({ onFailure }: StageProps) {
               aria-label={`Go to ${copy.chapters[ch].title}`}
             >
               <div className={`progress-tick ${currentChapter === ch ? 'active' : ''}`} />
-              <span className="absolute right-8 font-mono text-[10px] text-stage-muted uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+              <span className="absolute right-8 font-mono text-[11px] text-stage-muted uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                 {copy.chapters[ch].title}
               </span>
             </button>
@@ -618,9 +641,8 @@ export default function Stage({ onFailure }: StageProps) {
         {chapters.map(ch => {
           const photos = getFeaturedPhotos(ch);
           return (
-            <section key={ch} aria-labelledby={`chapter-${ch}-heading`}>
-              <h2 id={`chapter-${ch}-heading`}>{copy.chapters[ch].title}</h2>
-              <ul>
+            <section key={ch}>
+              <ul aria-label={`${copy.chapters[ch].title} photos`}>
                 {photos.map(photo => (
                   <li key={photo.id}>
                     <img
@@ -684,7 +706,7 @@ function ContactSheet({ chapter, photos, onClose }: {
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <p className="font-mono text-[10px] text-stage-muted uppercase tracking-[0.2em] mb-2">
+              <p className="font-mono text-[11px] text-stage-muted uppercase tracking-[0.2em] mb-2">
                 Contact Sheet
               </p>
               <h3 className="font-display text-2xl md:text-3xl font-bold text-stage-text uppercase tracking-tight">
@@ -716,7 +738,7 @@ function ContactSheet({ chapter, photos, onClose }: {
                   width={getAspect(photo)[0]}
                   height={getAspect(photo)[1]}
                 />
-                <div className="absolute bottom-1 left-1 font-mono text-[9px] text-stage-muted bg-stage/60 px-1">
+                <div className="absolute bottom-1 left-1 font-mono text-[11px] text-stage-muted bg-stage/60 px-1">
                   {String(i + 1).padStart(2, '0')}
                 </div>
               </div>

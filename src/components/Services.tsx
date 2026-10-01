@@ -65,7 +65,7 @@ export default function Services() {
       <div className="max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)]">
         {/* Header */}
         <div className="reveal mb-12 md:mb-20">
-          <p className="font-mono text-[10px] text-ink-soft uppercase tracking-[0.25em] mb-4">
+          <p className="font-mono text-[11px] text-ink-soft uppercase tracking-[0.25em] mb-4">
             Services
           </p>
           <h2
@@ -92,7 +92,7 @@ export default function Services() {
               >
                 {/* Number */}
                 <div className="col-span-2 md:col-span-1">
-                  <span className="font-mono text-[10px] text-ink-soft/60 uppercase tracking-wider">
+                  <span className="font-mono text-[11px] text-ink-soft uppercase tracking-wider">
                     {String(i + 1).padStart(2, '0')}
                   </span>
                 </div>
@@ -113,7 +113,7 @@ export default function Services() {
 
                 {/* Arrow */}
                 <div className="hidden md:flex col-span-2 items-center justify-end">
-                  <span className="font-mono text-ink-soft/40 group-hover:text-brass transition-[color,transform] duration-200 group-hover:translate-x-1">
+                  <span className="font-mono text-ink-soft group-hover:text-brass transition-[color,transform] duration-200 group-hover:translate-x-1">
                     →
                   </span>
                 </div>
