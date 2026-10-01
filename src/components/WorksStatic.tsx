@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { chapters, copy, getFeaturedPhotos, flags, type Chapter } from '../content';
+import { chapters, copy, getFeaturedPhotos, flags, getPhotoSrc, getAspect, type Chapter } from '../content';
 import { detectCapabilities } from '../lib/gate';
 
 // Static path: renders chapters as editorial sequences for mobile/reduced motion
@@ -60,9 +60,9 @@ function StaticChapter({ chapter, index }: { chapter: Chapter; index: number }) 
       <div className="max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)] pb-16 md:pb-24">
         <div className="space-y-6 md:space-y-8">
           {photos.map((photo, i) => {
-            // Alternate between full-width and offset layouts
             const isOffset = i % 3 === 1;
             const isNarrow = i % 5 === 3;
+            const aspect = getAspect(photo);
             
             return (
               <figure
@@ -76,13 +76,13 @@ function StaticChapter({ chapter, index }: { chapter: Chapter; index: number }) 
                   } ${isNarrow ? 'md:max-w-[75%]' : ''}`}
                 >
                   <img
-                    src={photo.src}
+                    src={getPhotoSrc(photo, 'thumbnail')}
                     alt={photo.alt}
                     className="w-full h-auto block"
-                    style={{ aspectRatio: `${photo.aspect[0]}/${photo.aspect[1]}` }}
+                    style={{ aspectRatio: `${aspect[0]}/${aspect[1]}` }}
                     loading="lazy"
-                    width={photo.aspect[0] * 200}
-                    height={photo.aspect[1] * 200}
+                    width={photo.width}
+                    height={photo.height}
                   />
                 </div>
                 

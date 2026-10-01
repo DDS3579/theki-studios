@@ -5,7 +5,7 @@ import { cameraFor, createPointerParallax, updatePointerParallax, type PointerPa
 import { computePlaneRect, getScreenRect } from '../lib/stage/layout';
 import { buildJourney, getSegmentAt, getLocalProgress, type Segment } from '../lib/stage/journey';
 import { detectCapabilities, type RenderTier } from '../lib/gate';
-import { chapters, getFeaturedPhotos, copy, flags, type Chapter, type Photo } from '../content';
+import { chapters, getFeaturedPhotos, copy, flags, getPhotoSrc, getAspect, type Chapter, type Photo } from '../content';
 
 interface StageState {
   progress: number;
@@ -49,9 +49,9 @@ export default function Stage() {
     const renderer = new StageRenderer(canvasRef.current);
     rendererRef.current = renderer;
 
-    // Preload textures for all chapters
+    // B1.1/B1.3: load textures from local files at 'texture' purpose width
     const allPhotos = chapters.flatMap(ch => getFeaturedPhotos(ch));
-    allPhotos.forEach(photo => renderer.loadTexture(photo.id, photo.src));
+    allPhotos.forEach(photo => renderer.loadTexture(photo.id, getPhotoSrc(photo, 'texture')));
 
     return () => {
       renderer.dispose();
@@ -109,19 +109,16 @@ export default function Stage() {
       const current = smoothProgressRef.current;
       const dt = 1 / 60;
 
-      // Critically damped spring
       const force = stiffness * (target - current);
       const dampForce = -damping * velocity;
       velocity += (force + dampForce) * dt;
       const newProgress = current + velocity * dt;
       smoothProgressRef.current = Math.max(0, Math.min(1, newProgress));
 
-      // Update state
       const journey = journeyRef.current;
       const segment = getSegmentAt(journey, smoothProgressRef.current);
       const localProgress = getLocalProgress(segment, smoothProgressRef.current);
       
-      // Calculate focus
       let focusDistance = 0;
       let currentCoc = 0;
       
@@ -148,18 +145,17 @@ export default function Stage() {
       stateRef.current = newState;
       setStageState(newState);
 
-      // Render WebGL
       if (rendererRef.current && tier !== 'static') {
         const camera = cameraFor(segment.chapter, localProgress, parallaxRef.current);
         
-        // Build planes for current chapter
         const chapterPhotos = getFeaturedPhotos(segment.chapter);
         const planes: Plane[] = [];
         
         for (let i = 0; i < chapterPhotos.length; i++) {
           const photo = chapterPhotos[i];
           const stageAspect = window.innerWidth / window.innerHeight;
-          const rect = computePlaneRect(photo.aspect, stageAspect, i, chapterPhotos.length);
+          const aspect = getAspect(photo);
+          const rect = computePlaneRect(aspect, stageAspect, i, chapterPhotos.length);
           
           let opacity = 1;
           if (segment.type === 'frame' && segment.frameIndex !== undefined) {
@@ -188,14 +184,14 @@ export default function Stage() {
         );
       }
 
-      // Update screen rect for viewfinder
       if (segment.type === 'frame' && segment.frameIndex !== undefined) {
         const chapterPhotos = getFeaturedPhotos(segment.chapter);
         const photo = chapterPhotos[segment.frameIndex];
         if (photo && containerRef.current) {
           const stageRect = containerRef.current.getBoundingClientRect();
           const stageAspect = stageRect.width / stageRect.height;
-          const planeRect = computePlaneRect(photo.aspect, stageAspect, segment.frameIndex, chapterPhotos.length);
+          const aspect = getAspect(photo);
+          const planeRect = computePlaneRect(aspect, stageAspect, segment.frameIndex, chapterPhotos.length);
           const sr = getScreenRect(planeRect, stageRect.width, stageRect.height);
           setScreenRect(sr);
         }
@@ -227,9 +223,7 @@ export default function Stage() {
       style={{ height: containerHeight }}
       id="work"
     >
-      {/* Sticky stage */}
       <div className="sticky top-0 h-[100svh] w-full overflow-hidden bg-stage">
-        {/* WebGL Canvas */}
         <canvas
           ref={canvasRef}
           className="stage-canvas"
@@ -238,10 +232,8 @@ export default function Stage() {
 
         {/* Viewfinder overlay */}
         <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-          {/* Corner marks around current photo */}
           {currentPhoto && screenRect.width > 0 && (
             <div
-              /* B0.5: no transition on layout props; marks use their own border-color transition */
               className="absolute"
               style={{
                 left: screenRect.left,
@@ -257,14 +249,12 @@ export default function Stage() {
             </div>
           )}
 
-          {/* Frame counter - top left */}
           <div className="absolute top-6 left-6 font-mono text-[11px] text-stage-muted tracking-[0.15em]">
             {stageState.chapter.toUpperCase()}{' '}
             {String((stageState.frameIndex || 0) + 1).padStart(2, '0')}
             /{String(currentChapterPhotos.length).padStart(2, '0')}
           </div>
 
-          {/* Focus lock indicator - top right */}
           <div className="absolute top-6 right-6 flex items-center gap-2">
             <div className={`focus-lock ${stageState.focusLocked ? 'locked' : 'hunting'}`} />
             <span className="font-mono text-[10px] text-stage-muted uppercase tracking-[0.15em]">
@@ -272,7 +262,6 @@ export default function Stage() {
             </span>
           </div>
 
-          {/* Capture settings - bottom left */}
           {flags.SHOW_CAPTURE && currentPhoto?.capture && (
             <div className="absolute bottom-20 left-6 font-mono text-[11px] text-stage-muted tracking-wide">
               {[
@@ -285,7 +274,6 @@ export default function Stage() {
           )}
         </div>
 
-        {/* Chapter title during title card segments */}
         {stageState.segment.type === 'title' && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="text-center">
@@ -299,7 +287,6 @@ export default function Stage() {
           </div>
         )}
 
-        {/* Progress rail - right edge */}
         <nav className="absolute right-5 top-1/2 -translate-y-1/2 flex flex-col gap-4 pointer-events-auto" aria-label="Chapter progress">
           {chapters.map((ch) => (
             <a
@@ -312,7 +299,6 @@ export default function Stage() {
           ))}
         </nav>
 
-        {/* Contact sheet button */}
         <button
           onClick={() => setContactSheetOpen(true)}
           className="absolute bottom-6 right-6 pointer-events-auto
@@ -326,16 +312,14 @@ export default function Stage() {
         </button>
       </div>
 
-      {/* Contact Sheet Dialog */}
       {contactSheetOpen && (
         <ContactSheet
           chapter={stageState.chapter}
-          photos={currentChapterPhotos}
+          photos={[...currentChapterPhotos]}
           onClose={() => setContactSheetOpen(false)}
         />
       )}
 
-      {/* Accessible content for screen readers and no-JS */}
       <div className="sr-only">
         {chapters.map(ch => (
           <div key={ch} id={`chapter-${ch}`}>
@@ -343,7 +327,7 @@ export default function Stage() {
             <p>{copy.chapters[ch].subtitle}</p>
             {getFeaturedPhotos(ch).map(photo => (
               <figure key={photo.id}>
-                <img src={photo.src} alt={photo.alt} />
+                <img src={getPhotoSrc(photo, 'thumbnail')} alt={photo.alt} />
               </figure>
             ))}
           </div>
@@ -353,7 +337,6 @@ export default function Stage() {
   );
 }
 
-// Contact Sheet overlay
 function ContactSheet({ chapter, photos, onClose }: {
   chapter: Chapter;
   photos: Photo[];
@@ -390,7 +373,6 @@ function ContactSheet({ chapter, photos, onClose }: {
     >
       <div className="h-full overflow-auto p-6 md:p-12">
         <div className="max-w-5xl mx-auto">
-          {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div>
               <p className="font-mono text-[10px] text-stage-muted uppercase tracking-[0.2em] mb-2">
@@ -410,15 +392,16 @@ function ContactSheet({ chapter, photos, onClose }: {
             </button>
           </div>
           
-          {/* Grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
             {photos.map((photo, i) => (
               <div key={photo.id} className="relative aspect-[3/2] bg-stage overflow-hidden group">
                 <img
-                  src={photo.src}
+                  src={getPhotoSrc(photo, 'thumbnail')}
                   alt={photo.alt}
                   className="w-full h-full object-cover"
                   loading="lazy"
+                  width={photo.width}
+                  height={photo.height}
                 />
                 <div className="absolute bottom-1 left-1 font-mono text-[9px] text-stage-muted bg-stage/60 px-1">
                   {String(i + 1).padStart(2, '0')}

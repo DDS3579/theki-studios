@@ -1,18 +1,35 @@
 // Content system for Theki Studios
 // All content lives here, never inline in components.
+// B1.1–B1.7: local images, real dimensions, purpose-based helpers, pre-computed lists.
 
 export type Chapter = 'weddings' | 'cars' | 'photoshoots';
 
+// B1.3: image purposes — each requested only where needed
+export type ImagePurpose = 'hero' | 'texture' | 'thumbnail' | 'large';
+
+const PURPOSE_WIDTH: Record<ImagePurpose, number> = {
+  hero: 1600,
+  texture: 1600,
+  thumbnail: 800,
+  large: 2400,
+};
+
 export interface Photo {
   id: string;
-  src: string;
+  // B1.1: base name matches the file in public/images (e.g. 'wedding-1')
+  // Available files: {baseName}-{width}.webp for each width in `widths`
+  baseName: string;
   chapter: Chapter;
   alt: string;
   caption?: string;
   featured: boolean;
   order: number;
   hero?: boolean;
-  aspect: [number, number]; // [width, height]
+  // B1.2: real pixel dimensions at the largest available size
+  width: number;
+  height: number;
+  // B1.1: available widths (must match files on disk)
+  widths: number[];
   capture?: {
     focal?: string;
     aperture?: string;
@@ -28,25 +45,28 @@ export interface Service {
   chapter?: Chapter;
 }
 
-export interface Copy {
-  heroLabel: string;
-  heroHeadline: string;
-  heroSupport: string;
+// B1.4: hero copy — headline stored as lines so Hero can render them without parsing
+export interface HeroCopy {
+  label: string;
+  headlineLines: string[];
+  support: string;
   ctaPrimary: string;
   ctaSecondary: string;
+}
+
+export interface Copy {
+  hero: HeroCopy;
   chapters: Record<Chapter, { title: string; subtitle: string }>;
   contactHeading: string;
   contactText: string;
 }
 
-// Feature flags
+// Feature flags — only flags that are actually wired up
 export const flags = {
-  SHOW_TESTIMONIALS: false,
-  SHOW_GEAR: false,
   SHOW_CAPTURE: true,
 };
 
-// [FILL] Social links - add real URLs when available
+// [FILL] Social links — add real URLs when available
 export const socialLinks = {
   instagram: '', // [FILL]
   facebook: '', // [FILL]
@@ -64,11 +84,13 @@ export const contact = {
 
 // Copy
 export const copy: Copy = {
-  heroLabel: 'Photography & film',
-  heroHeadline: 'Frames worth keeping.',
-  heroSupport: 'Weddings, cars and portraits, shot with patience and finished with care.',
-  ctaPrimary: 'View the work',
-  ctaSecondary: 'Enquire',
+  hero: {
+    label: 'Photography & film',
+    headlineLines: ['Frames', 'worth', 'keeping.'],
+    support: 'Weddings, cars and portraits, shot with patience and finished with care.',
+    ctaPrimary: 'View the work',
+    ctaSecondary: 'Enquire',
+  },
   chapters: {
     weddings: {
       title: 'Weddings',
@@ -96,135 +118,243 @@ export const services: Service[] = [
   { id: 'events', name: 'Events', description: 'Documentary coverage of launches, dinners and gatherings.' },
 ];
 
-// Photos
+// B1.1–B1.2: photos with real dimensions and local file names.
+// File naming: public/images/{baseName}-{width}.webp
+// Widths available: 800, 1600, 2400 (long edge). User converts originals to these.
+const ALL_WIDTHS = [800, 1600, 2400];
+
 export const photos: Photo[] = [
-  // Weddings
+  // Weddings (all 3:2 → 2400×1600)
   {
     id: 'w1',
-    src: 'https://image.qwenlm.ai/generated-images/74c1b440-ca1e-430d-9aee-1c1e0faeff21/_result.png',
+    baseName: 'wedding-1',
     chapter: 'weddings',
     alt: 'A couple standing together in golden hour light, the bride in white and the groom in a dark suit',
     featured: true,
     order: 1,
     hero: true,
-    aspect: [3, 2],
+    width: 2400,
+    height: 1600,
+    widths: ALL_WIDTHS,
     capture: { focal: '85 mm', aperture: 'f/1.4', shutter: '1/500', iso: '200' },
   },
   {
     id: 'w2',
-    src: 'https://image.qwenlm.ai/generated-images/3e72a02f-065e-48e0-8bb9-5ed4f183f782/_result.png',
+    baseName: 'wedding-2',
     chapter: 'weddings',
     alt: 'Close-up of intertwined hands wearing wedding rings in soft natural light',
     featured: true,
     order: 2,
-    aspect: [3, 2],
+    width: 2400,
+    height: 1600,
+    widths: ALL_WIDTHS,
     capture: { focal: '50 mm', aperture: 'f/1.8', shutter: '1/250', iso: '200' },
   },
   {
     id: 'w3',
-    src: 'https://image.qwenlm.ai/generated-images/bef8dc31-c434-4a19-b918-0c3eb37ae08c/_result.png',
+    baseName: 'wedding-3',
     chapter: 'weddings',
     alt: 'Bride walking down the aisle with dramatic light streaming through tall windows',
     featured: true,
     order: 3,
-    aspect: [3, 2],
+    width: 2400,
+    height: 1600,
+    widths: ALL_WIDTHS,
     capture: { focal: '35 mm', aperture: 'f/2.0', shutter: '1/160', iso: '400' },
   },
   {
     id: 'w4',
-    src: 'https://image.qwenlm.ai/generated-images/17ce222a-4810-49ab-8441-c3a366397daa/_result.png',
+    baseName: 'wedding-4',
     chapter: 'weddings',
     alt: 'Elegant wedding reception table with candles and warm ambient light',
     featured: true,
     order: 4,
-    aspect: [3, 2],
+    width: 2400,
+    height: 1600,
+    widths: ALL_WIDTHS,
     capture: { focal: '50 mm', aperture: 'f/1.4', shutter: '1/60', iso: '800' },
   },
-  // Cars
+  // Cars (all 3:2 → 2400×1600)
   {
     id: 'c1',
-    src: 'https://image.qwenlm.ai/generated-images/c280aef0-4cb6-4251-aa95-8e9b80ba205d/_result.png',
+    baseName: 'car-1',
     chapter: 'cars',
     alt: 'A vintage burgundy Mercedes-Benz SL on a tree-lined road in golden hour light',
     featured: true,
     order: 1,
     hero: true,
-    aspect: [3, 2],
+    width: 2400,
+    height: 1600,
+    widths: ALL_WIDTHS,
     capture: { focal: '50 mm', aperture: 'f/4.0', shutter: '1/250', iso: '100' },
   },
   {
     id: 'c2',
-    src: 'https://image.qwenlm.ai/generated-images/d956dab2-7c72-447b-bcbd-218c2402c1a1/_result.png',
+    baseName: 'car-2',
     chapter: 'cars',
     alt: 'A silver Porsche 911 photographed from a low angle on a mountain road at dusk',
     featured: true,
     order: 2,
-    aspect: [3, 2],
+    width: 2400,
+    height: 1600,
+    widths: ALL_WIDTHS,
     capture: { focal: '35 mm', aperture: 'f/5.6', shutter: '1/125', iso: '200' },
   },
   {
     id: 'c3',
-    src: 'https://image.qwenlm.ai/generated-images/f0910207-ef15-4f67-b98d-596e44032183/_result.png',
+    baseName: 'car-3',
     chapter: 'cars',
     alt: 'Close-up of a vintage car steering wheel and dashboard with warm leather textures',
     featured: true,
     order: 3,
-    aspect: [3, 2],
+    width: 2400,
+    height: 1600,
+    widths: ALL_WIDTHS,
     capture: { focal: '85 mm', aperture: 'f/2.8', shutter: '1/60', iso: '400' },
   },
-  // Photoshoots
+  // Photoshoots (p1 and p3 are 2:3 portraits; p2 is 3:2)
   {
     id: 'p1',
-    src: 'https://image.qwenlm.ai/generated-images/0ace7448-e61d-412b-af86-04a8385c31ec/_result.png',
+    baseName: 'photoshoot-1',
     chapter: 'photoshoots',
     alt: 'Studio portrait of a woman in elegant dark clothing with dramatic Rembrandt lighting',
     featured: true,
     order: 1,
     hero: true,
-    aspect: [2, 3],
+    width: 1600,
+    height: 2400,
+    widths: ALL_WIDTHS,
     capture: { focal: '85 mm', aperture: 'f/2.0', shutter: '1/125', iso: '100' },
   },
   {
     id: 'p2',
-    src: 'https://image.qwenlm.ai/generated-images/63542558-63cf-4563-a209-7636ecf6d91f/_result.png',
+    baseName: 'photoshoot-2',
     chapter: 'photoshoots',
     alt: 'An editorial couple in an urban setting at golden hour, looking at each other',
     featured: true,
     order: 2,
-    aspect: [3, 2],
+    width: 2400,
+    height: 1600,
+    widths: ALL_WIDTHS,
     capture: { focal: '50 mm', aperture: 'f/1.8', shutter: '1/320', iso: '200' },
   },
   {
     id: 'p3',
-    src: 'https://image.qwenlm.ai/generated-images/258cc257-abcd-4181-b81f-6293b5eb363b/_result.png',
+    baseName: 'photoshoot-3',
     chapter: 'photoshoots',
     alt: 'Fashion portrait of a man in a tailored dark suit with dramatic side lighting',
     featured: true,
     order: 3,
-    aspect: [2, 3],
+    width: 1600,
+    height: 2400,
+    widths: ALL_WIDTHS,
     capture: { focal: '85 mm', aperture: 'f/2.8', shutter: '1/125', iso: '100' },
   },
 ];
 
-// Get photos by chapter
-export function getPhotosByChapter(chapter: Chapter): Photo[] {
-  return photos
-    .filter((p) => p.chapter === chapter)
-    .sort((a, b) => a.order - b.order);
+// ─── B1.2: derive aspect from real dimensions ────────────────────────────────
+export function getAspect(photo: Photo): [number, number] {
+  return [photo.width, photo.height];
 }
 
-export function getFeaturedPhotos(chapter: Chapter): Photo[] {
-  return getPhotosByChapter(chapter).filter((p) => p.featured);
+// ─── B1.1 / B1.3: image URL helpers by purpose ──────────────────────────────
+function pickWidth(photo: Photo, targetWidth: number): number {
+  // Choose the smallest available width that is >= targetWidth.
+  // Falls back to the largest available if all are smaller.
+  const sorted = [...photo.widths].sort((a, b) => a - b);
+  for (const w of sorted) {
+    if (w >= targetWidth) return w;
+  }
+  return sorted[sorted.length - 1];
+}
+
+export function getPhotoSrc(photo: Photo, purpose: ImagePurpose): string {
+  const w = pickWidth(photo, PURPOSE_WIDTH[purpose]);
+  return `/images/${photo.baseName}-${w}.webp`;
+}
+
+export function getPhotoSrcSet(photo: Photo): string {
+  return photo.widths
+    .map((w) => `/images/${photo.baseName}-${w}.webp ${w}w`)
+    .join(', ');
+}
+
+export function getPhotoSizes(purpose: ImagePurpose): string {
+  switch (purpose) {
+    case 'hero':
+      return '100vw';
+    case 'large':
+      return '100vw';
+    case 'texture':
+      return '100vw';
+    case 'thumbnail':
+      return '(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw';
+  }
+}
+
+// ─── B1.6: pre-computed, frozen lists ────────────────────────────────────────
+// Computed once at module load; same array references every call.
+
+type ChapterMap<T> = Record<Chapter, T>;
+
+function buildChapterMap<T>(fn: (ch: Chapter) => T): ChapterMap<T> {
+  return {
+    weddings: fn('weddings'),
+    cars: fn('cars'),
+    photoshoots: fn('photoshoots'),
+  };
+}
+
+export const photosByChapter: ChapterMap<readonly Photo[]> = Object.freeze(
+  buildChapterMap((ch) =>
+    Object.freeze(
+      photos.filter((p) => p.chapter === ch).sort((a, b) => a.order - b.order)
+    )
+  )
+);
+
+export const featuredByChapter: ChapterMap<readonly Photo[]> = Object.freeze(
+  buildChapterMap((ch) =>
+    Object.freeze(photosByChapter[ch].filter((p) => p.featured))
+  )
+);
+
+// Backwards-compatible accessors that return the frozen arrays
+export function getPhotosByChapter(chapter: Chapter): readonly Photo[] {
+  return photosByChapter[chapter];
+}
+
+export function getFeaturedPhotos(chapter: Chapter): readonly Photo[] {
+  return featuredByChapter[chapter];
 }
 
 export function getHeroPhoto(chapter: Chapter): Photo | undefined {
-  return getPhotosByChapter(chapter).find((p) => p.hero);
+  return photosByChapter[chapter].find((p) => p.hero);
 }
 
-// Chapters in order
+// Chapters in order — declared here so helpers below can reference it
 export const chapters: Chapter[] = ['weddings', 'cars', 'photoshoots'];
 
-// [FILL] list for dev warnings
+// ─── B1.5: global display order ──────────────────────────────────────────────
+// Chapters in declared order, then photo order within each chapter.
+
+export const allPhotosInDisplayOrder: readonly Photo[] = Object.freeze(
+  chapters.flatMap((ch) => [...photosByChapter[ch]])
+);
+
+// id → index in allPhotosInDisplayOrder (for lightbox prev/next)
+const indexById = new Map<string, number>();
+allPhotosInDisplayOrder.forEach((p, i) => indexById.set(p.id, i));
+
+export function getPhotoDisplayIndex(photoId: string): number {
+  return indexById.get(photoId) ?? -1;
+}
+
+export function getPhotoAtDisplayIndex(index: number): Photo | undefined {
+  return allPhotosInDisplayOrder[index];
+}
+
+// ─── B1.7: dev warnings for missing fields ───────────────────────────────────
 export const missingFields: string[] = [
   ...(!socialLinks.instagram ? ['socialLinks.instagram'] : []),
   ...(!socialLinks.facebook ? ['socialLinks.facebook'] : []),
@@ -236,7 +366,6 @@ export const missingFields: string[] = [
   ...(!contact.formEndpoint ? ['contact.formEndpoint'] : []),
 ];
 
-// Log missing fields in development
 if (typeof window !== 'undefined' && import.meta.env.DEV) {
   if (missingFields.length > 0) {
     console.warn('[Theki Studios] Missing content fields:', missingFields.join(', '));

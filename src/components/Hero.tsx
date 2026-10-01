@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { copy, chapters, getFeaturedPhotos, getPhotosByChapter } from '../content';
+import { copy, chapters, getPhotosByChapter, getPhotoSrc, getHeroPhoto } from '../content';
 
 export default function Hero() {
   const [loaded, setLoaded] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    // Trigger animations after cold open
     const timer = setTimeout(() => setLoaded(true), 400);
     return () => clearTimeout(timer);
   }, []);
+
+  // B1.4: read hero image from content
+  const heroPhoto = getHeroPhoto('weddings');
+  const heroSrc = heroPhoto ? getPhotoSrc(heroPhoto, 'hero') : '';
 
   const totalFrames = chapters.reduce((sum, ch) => sum + getPhotosByChapter(ch).length, 0);
 
@@ -21,15 +24,17 @@ export default function Hero() {
     >
       {/* Hero background image */}
       <div className="absolute inset-0">
-        <img
-          src="https://image.qwenlm.ai/generated-images/74c1b440-ca1e-430d-9aee-1c1e0faeff21/_result.png"
-          alt=""
-          aria-hidden="true"
-          className="w-full h-full object-cover object-center"
-          width={1600}
-          height={1067}
-          fetchPriority="high"
-        />
+        {heroSrc && (
+          <img
+            src={heroSrc}
+            alt=""
+            aria-hidden="true"
+            className="w-full h-full object-cover object-center"
+            width={heroPhoto?.width}
+            height={heroPhoto?.height}
+            fetchPriority="high"
+          />
+        )}
         {/* Gradient overlay for text legibility */}
         <div className="absolute inset-0 bg-linear-to-t from-stage via-stage/50 to-stage/20" />
         <div className="absolute inset-0 bg-linear-to-r from-stage/60 via-transparent to-transparent" />
@@ -45,67 +50,47 @@ export default function Hero() {
 
       {/* Main content - left weighted */}
       <div className="relative z-10 h-full flex flex-col justify-end max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)] pb-20 md:pb-28 lg:pb-32">
-        <div className={`transition-[opacity,transform] duration-700 ease-[var(--ease-focus)] ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
-          {/* Label */}
+        <div className={`transition-all duration-700 ease-[var(--ease-focus)] ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
+          {/* B1.4: label from content */}
           <p className="font-mono text-[10px] md:text-xs text-stage-muted uppercase tracking-[0.25em] mb-5 md:mb-7">
-            {copy.heroLabel}
+            {copy.hero.label}
           </p>
 
-          {/* Headline - three masked lines */}
+          {/* B1.4: headline lines from content */}
           <h1
             className="font-display font-black uppercase leading-[0.86] tracking-[-0.025em] text-stage-text mb-6 md:mb-8"
             style={{ fontSize: 'clamp(3.5rem, 10vw, 9rem)' }}
           >
-            <span className="block overflow-hidden pb-1">
-              <span
-                className="inline-block transition-transform duration-700 ease-[var(--ease-focus)]"
-                style={{
-                  transform: loaded ? 'translateY(0)' : 'translateY(110%)',
-                  transitionDelay: '0.3s',
-                }}
-              >
-                Frames
+            {copy.hero.headlineLines.map((line, i) => (
+              <span key={i} className="block overflow-hidden pb-1">
+                <span
+                  className="inline-block transition-transform duration-700 ease-[var(--ease-focus)]"
+                  style={{
+                    transform: loaded ? 'translateY(0)' : 'translateY(110%)',
+                    transitionDelay: `${0.3 + i * 0.12}s`,
+                  }}
+                >
+                  {line}
+                </span>
               </span>
-            </span>
-            <span className="block overflow-hidden pb-1">
-              <span
-                className="inline-block transition-transform duration-700 ease-[var(--ease-focus)]"
-                style={{
-                  transform: loaded ? 'translateY(0)' : 'translateY(110%)',
-                  transitionDelay: '0.42s',
-                }}
-              >
-                worth
-              </span>
-            </span>
-            <span className="block overflow-hidden pb-1">
-              <span
-                className="inline-block transition-transform duration-700 ease-[var(--ease-focus)]"
-                style={{
-                  transform: loaded ? 'translateY(0)' : 'translateY(110%)',
-                  transitionDelay: '0.54s',
-                }}
-              >
-                keeping.
-              </span>
-            </span>
+            ))}
           </h1>
 
-          {/* Support text */}
+          {/* B1.4: support text from content */}
           <p
-            className="font-sans text-base md:text-lg text-stage-muted max-w-md mb-8 md:mb-10 transition-[opacity,transform] duration-700 ease-[var(--ease-focus)]"
+            className="font-sans text-base md:text-lg text-stage-muted max-w-md mb-8 md:mb-10 transition-all duration-700 ease-[var(--ease-focus)]"
             style={{
               opacity: loaded ? 1 : 0,
               transform: loaded ? 'translateY(0)' : 'translateY(16px)',
               transitionDelay: '0.7s',
             }}
           >
-            {copy.heroSupport}
+            {copy.hero.support}
           </p>
 
-          {/* CTAs */}
+          {/* B1.4: CTAs from content */}
           <div
-            className="flex flex-wrap gap-4 transition-[opacity,transform] duration-700 ease-[var(--ease-focus)]"
+            className="flex flex-wrap gap-4 transition-all duration-700 ease-[var(--ease-focus)]"
             style={{
               opacity: loaded ? 1 : 0,
               transform: loaded ? 'translateY(0)' : 'translateY(16px)',
@@ -116,13 +101,13 @@ export default function Hero() {
               href="#work"
               className="inline-block font-sans text-sm font-medium bg-paper text-ink px-7 py-3.5 hover:bg-cream transition-colors duration-200"
             >
-              {copy.ctaPrimary}
+              {copy.hero.ctaPrimary}
             </a>
             <a
               href="#contact"
               className="inline-block font-sans text-sm font-medium border border-stage-text/30 text-stage-text px-7 py-3.5 hover:border-brass hover:text-brass transition-colors duration-200"
             >
-              {copy.ctaSecondary}
+              {copy.hero.ctaSecondary}
             </a>
           </div>
         </div>

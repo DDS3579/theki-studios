@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { photos, chapters, copy, getPhotosByChapter, flags, type Photo } from '../content';
+import {
+  chapters,
+  copy,
+  getPhotosByChapter,
+  flags,
+  getPhotoSrc,
+  getPhotoSrcSet,
+  getPhotoSizes,
+  getAspect,
+  allPhotosInDisplayOrder,
+  getPhotoDisplayIndex,
+  type Photo,
+} from '../content';
 
 export default function Archive() {
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
@@ -7,8 +19,6 @@ export default function Archive() {
   const dialogLightboxRef = useRef<HTMLDialogElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
-
-  const allPhotos = [...photos].sort((a, b) => a.order - b.order);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -29,10 +39,11 @@ export default function Archive() {
     return () => observer.disconnect();
   }, []);
 
-  const openLightbox = (photo: Photo, index: number, trigger: HTMLElement) => {
+  // B1.5: open lightbox using global display index
+  const openLightbox = (photo: Photo, trigger: HTMLElement) => {
     triggerRef.current = trigger;
     setLightboxPhoto(photo);
-    setLightboxIndex(index);
+    setLightboxIndex(getPhotoDisplayIndex(photo.id));
     dialogLightboxRef.current?.showModal();
   };
 
@@ -42,11 +53,15 @@ export default function Archive() {
     triggerRef.current?.focus();
   };
 
+  // B1.5: navigate using global display order
   const navigateLightbox = (direction: number) => {
     const newIndex = lightboxIndex + direction;
-    if (newIndex >= 0 && newIndex < allPhotos.length) {
-      setLightboxPhoto(allPhotos[newIndex]);
-      setLightboxIndex(newIndex);
+    if (newIndex >= 0 && newIndex < allPhotosInDisplayOrder.length) {
+      const photo = allPhotosInDisplayOrder[newIndex];
+      if (photo) {
+        setLightboxPhoto(photo);
+        setLightboxIndex(newIndex);
+      }
     }
   };
 
@@ -97,10 +112,9 @@ export default function Archive() {
                 {copy.chapters[chapter].title}
               </h3>
               
-              {/* Justified rows */}
+              {/* B1.3: justified rows use 'thumbnail' purpose */}
               <JustifiedRows
-                photos={chapterPhotos}
-                allPhotos={allPhotos}
+                photos={[...chapterPhotos]}
                 onPhotoClick={openLightbox}
               />
             </div>
@@ -108,7 +122,7 @@ export default function Archive() {
         })}
       </div>
 
-      {/* Lightbox dialog */}
+      {/* Lightbox dialog — B1.3: uses 'large' purpose */}
       <dialog
         ref={dialogLightboxRef}
         className="fixed inset-0 w-full h-full z-[60] p-0 m-0"
@@ -137,7 +151,7 @@ export default function Archive() {
             )}
             
             {/* Next */}
-            {lightboxIndex < allPhotos.length - 1 && (
+            {lightboxIndex < allPhotosInDisplayOrder.length - 1 && (
               <button
                 onClick={() => navigateLightbox(1)}
                 className="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 z-10 font-mono text-2xl text-stage-muted hover:text-brass transition-colors p-4"
@@ -147,12 +161,14 @@ export default function Archive() {
               </button>
             )}
 
-            {/* Image */}
+            {/* B1.3: Image uses 'large' purpose (2400px) */}
             <figure className="max-w-full max-h-full flex flex-col items-center">
               <img
-                src={lightboxPhoto.src}
+                src={getPhotoSrc(lightboxPhoto, 'large')}
                 alt={lightboxPhoto.alt}
                 className="max-w-full max-h-[70vh] object-contain"
+                width={lightboxPhoto.width}
+                height={lightboxPhoto.height}
               />
               <figcaption className="mt-4 text-center max-w-md">
                 {lightboxPhoto.caption && (
@@ -175,7 +191,7 @@ export default function Archive() {
 
             {/* Counter */}
             <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 font-mono text-[10px] text-stage-muted">
-              {lightboxIndex + 1} / {allPhotos.length}
+              {lightboxIndex + 1} / {allPhotosInDisplayOrder.length}
             </div>
           </div>
         )}
@@ -184,11 +200,10 @@ export default function Archive() {
   );
 }
 
-// Justified rows component
-function JustifiedRows({ photos, allPhotos, onPhotoClick }: {
+// B1.3: Justified rows use 'thumbnail' purpose with srcset for responsive loading
+function JustifiedRows({ photos, onPhotoClick }: {
   photos: Photo[];
-  allPhotos: Photo[];
-  onPhotoClick: (photo: Photo, index: number, trigger: HTMLElement) => void;
+  onPhotoClick: (photo: Photo, trigger: HTMLElement) => void;
 }) {
   const targetHeight = 260;
   const rows: Photo[][] = [];
@@ -196,11 +211,12 @@ function JustifiedRows({ photos, allPhotos, onPhotoClick }: {
   let currentWidth = 0;
 
   for (const photo of photos) {
-    const aspect = photo.aspect[0] / photo.aspect[1];
+    const [w, h] = getAspect(photo);
+    const aspect = w / h;
     const photoWidth = aspect * targetHeight;
     
     currentRow.push(photo);
-    currentWidth += photoWidth + 4; // gap
+    currentWidth += photoWidth + 4;
 
     if (currentWidth > 900 || currentRow.length >= 4) {
       rows.push([...currentRow]);
@@ -213,32 +229,36 @@ function JustifiedRows({ photos, allPhotos, onPhotoClick }: {
   return (
     <div className="flex flex-col gap-1">
       {rows.map((row, rowIdx) => {
-        const totalAspect = row.reduce((sum, p) => sum + p.aspect[0] / p.aspect[1], 0);
+        const totalAspect = row.reduce((sum, p) => {
+          const [w, h] = getAspect(p);
+          return sum + w / h;
+        }, 0);
         
         return (
           <div key={rowIdx} className="flex gap-1" style={{ height: targetHeight }}>
             {row.map((photo) => {
-              const aspect = photo.aspect[0] / photo.aspect[1];
+              const [w, h] = getAspect(photo);
+              const aspect = w / h;
               const flexGrow = aspect / totalAspect * row.length;
-              const globalIndex = allPhotos.indexOf(photo);
               
               return (
                 <button
                   key={photo.id}
-                  onClick={(e) => onPhotoClick(photo, globalIndex, e.currentTarget)}
+                  onClick={(e) => onPhotoClick(photo, e.currentTarget)}
                   className="relative overflow-hidden bg-surface cursor-pointer group focus-visible:outline-brass focus-visible:outline-2 focus-visible:outline-offset-2"
                   style={{ flexGrow, flexBasis: 0 }}
                   aria-label={`View: ${photo.alt}`}
                 >
                   <img
-                    src={photo.src}
+                    src={getPhotoSrc(photo, 'thumbnail')}
+                    srcSet={getPhotoSrcSet(photo)}
+                    sizes={getPhotoSizes('thumbnail')}
                     alt={photo.alt}
                     className="w-full h-full object-cover transition-transform duration-500 ease-[var(--ease-focus)] group-hover:scale-[1.03]"
                     loading="lazy"
-                    width={photo.aspect[0] * 100}
-                    height={photo.aspect[1] * 100}
+                    width={photo.width}
+                    height={photo.height}
                   />
-                  {/* Hover overlay */}
                   <div className="absolute inset-0 bg-stage/0 group-hover:bg-stage/10 transition-colors duration-300" />
                 </button>
               );
