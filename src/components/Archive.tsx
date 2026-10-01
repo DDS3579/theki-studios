@@ -161,7 +161,7 @@ export default function Archive() {
                   </p>
                 )}
                 {flags.SHOW_CAPTURE && lightboxPhoto.capture && (
-                  <p className="font-mono text-[10px] text-stage-muted/70">
+                  <p className="font-mono text-[10px] text-stage-muted">
                     {[
                       lightboxPhoto.capture.focal,
                       lightboxPhoto.capture.aperture,
@@ -174,7 +174,7 @@ export default function Archive() {
             </figure>
 
             {/* Counter */}
-            <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 font-mono text-[10px] text-stage-muted/70">
+            <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 font-mono text-[10px] text-stage-muted">
               {lightboxIndex + 1} / {allPhotos.length}
             </div>
           </div>
@@ -233,7 +233,7 @@ function JustifiedRows({ photos, allPhotos, onPhotoClick }: {
                   <img
                     src={photo.src}
                     alt={photo.alt}
-                    className="w-full h-full object-cover transition-all duration-500 ease-[var(--ease-focus)] group-hover:scale-[1.03]"
+                    className="w-full h-full object-cover transition-transform duration-500 ease-[var(--ease-focus)] group-hover:scale-[1.03]"
                     loading="lazy"
                     width={photo.aspect[0] * 100}
                     height={photo.aspect[1] * 100}

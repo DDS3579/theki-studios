@@ -56,7 +56,7 @@ export default function Header() {
   return (
     <>
       <header
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        className={`fixed top-0 left-0 right-0 z-50 transition-[background-color,border-color,backdrop-filter] duration-300 ${
           scrolled
             ? 'bg-paper/95 backdrop-blur-sm border-b border-border'
             : 'bg-transparent'
@@ -95,7 +95,7 @@ export default function Header() {
               ))}
               <a
                 href="#contact"
-                className={`font-sans text-sm border px-5 py-2.5 transition-all duration-200 ${
+                className={`font-sans text-sm border px-5 py-2.5 transition-colors duration-200 ${
                   scrolled
                     ? 'border-ink/20 text-ink hover:border-brass hover:text-brass'
                     : onStage

@@ -30,7 +30,7 @@ export default function App() {
         {caps.stageMode ? <Stage /> : <WorksStatic />}
 
         {/* Transition: dark to light — the room brightens */}
-        <div className="relative h-32 md:h-48 bg-gradient-to-b from-stage to-paper" aria-hidden="true">
+        <div className="relative h-32 md:h-48 bg-linear-to-b from-stage to-paper" aria-hidden="true">
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 font-mono text-[9px] text-ink-soft/40 uppercase tracking-[0.3em]">
             — Archive —
           </div>

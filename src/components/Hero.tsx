@@ -31,8 +31,8 @@ export default function Hero() {
           fetchPriority="high"
         />
         {/* Gradient overlay for text legibility */}
-        <div className="absolute inset-0 bg-gradient-to-t from-stage via-stage/50 to-stage/20" />
-        <div className="absolute inset-0 bg-gradient-to-r from-stage/60 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-t from-stage via-stage/50 to-stage/20" />
+        <div className="absolute inset-0 bg-linear-to-r from-stage/60 via-transparent to-transparent" />
       </div>
 
       {/* Viewfinder corner marks */}
@@ -45,7 +45,7 @@ export default function Hero() {
 
       {/* Main content - left weighted */}
       <div className="relative z-10 h-full flex flex-col justify-end max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)] pb-20 md:pb-28 lg:pb-32">
-        <div className={`transition-all duration-700 ease-[var(--ease-focus)] ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
+        <div className={`transition-[opacity,transform] duration-700 ease-[var(--ease-focus)] ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
           {/* Label */}
           <p className="font-mono text-[10px] md:text-xs text-stage-muted uppercase tracking-[0.25em] mb-5 md:mb-7">
             {copy.heroLabel}
@@ -93,7 +93,7 @@ export default function Hero() {
 
           {/* Support text */}
           <p
-            className="font-sans text-base md:text-lg text-stage-muted max-w-md mb-8 md:mb-10 transition-all duration-700 ease-[var(--ease-focus)]"
+            className="font-sans text-base md:text-lg text-stage-muted max-w-md mb-8 md:mb-10 transition-[opacity,transform] duration-700 ease-[var(--ease-focus)]"
             style={{
               opacity: loaded ? 1 : 0,
               transform: loaded ? 'translateY(0)' : 'translateY(16px)',
@@ -105,7 +105,7 @@ export default function Hero() {
 
           {/* CTAs */}
           <div
-            className="flex flex-wrap gap-4 transition-all duration-700 ease-[var(--ease-focus)]"
+            className="flex flex-wrap gap-4 transition-[opacity,transform] duration-700 ease-[var(--ease-focus)]"
             style={{
               opacity: loaded ? 1 : 0,
               transform: loaded ? 'translateY(0)' : 'translateY(16px)',
@@ -131,14 +131,14 @@ export default function Hero() {
       {/* Bottom strip - frame counts */}
       <div className="absolute bottom-0 left-0 right-0 border-t border-stage-text/[0.08]">
         <div className="max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)] py-3 flex items-center justify-between">
-          <div className="flex gap-4 md:gap-8 font-mono text-[9px] md:text-[10px] text-stage-muted/80 uppercase tracking-[0.15em]">
+          <div className="flex gap-4 md:gap-8 font-mono text-[9px] md:text-[10px] text-stage-muted uppercase tracking-[0.15em]">
             {chapters.map(ch => (
               <span key={ch}>
                 {ch}: {getPhotosByChapter(ch).length}
               </span>
             ))}
           </div>
-          <div className="font-mono text-[9px] md:text-[10px] text-stage-muted/80 uppercase tracking-[0.15em]">
+          <div className="font-mono text-[9px] md:text-[10px] text-stage-muted uppercase tracking-[0.15em]">
             {totalFrames} frames
           </div>
         </div>
@@ -151,7 +151,7 @@ export default function Hero() {
         aria-hidden="true"
       >
         <span className="font-mono text-[8px] text-stage-muted uppercase tracking-[0.2em]">Scroll</span>
-        <div className="w-px h-8 bg-gradient-to-b from-stage-muted to-transparent" />
+        <div className="w-px h-8 bg-linear-to-b from-stage-muted to-transparent" />
       </div>
     </section>
   );

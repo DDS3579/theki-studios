@@ -80,7 +80,7 @@ export default function Services() {
 
                 {/* Arrow */}
                 <div className="hidden md:flex col-span-2 items-center justify-end">
-                  <span className="font-mono text-ink-soft/40 group-hover:text-brass transition-all duration-200 group-hover:translate-x-1">
+                  <span className="font-mono text-ink-soft/40 group-hover:text-brass transition-[color,transform] duration-200 group-hover:translate-x-1">
                     →
                   </span>
                 </div>

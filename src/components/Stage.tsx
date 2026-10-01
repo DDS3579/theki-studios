@@ -241,7 +241,8 @@ export default function Stage() {
           {/* Corner marks around current photo */}
           {currentPhoto && screenRect.width > 0 && (
             <div
-              className="absolute transition-all duration-500 ease-[var(--ease-focus)]"
+              /* B0.5: no transition on layout props; marks use their own border-color transition */
+              className="absolute"
               style={{
                 left: screenRect.left,
                 top: screenRect.top,
