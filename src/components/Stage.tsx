@@ -1,21 +1,23 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { StageRenderer, type Plane } from '../lib/stage/renderer';
-import { circleOfConfusion, isFocusLocked } from '../lib/stage/focus';
-import { cameraFor, createPointerParallax, updatePointerParallax, type PointerParallax } from '../lib/stage/camera';
-import { computePlaneRect, getScreenRect } from '../lib/stage/layout';
-import { buildJourney, getSegmentAt, getLocalProgress, type Segment } from '../lib/stage/journey';
-import { capabilityStore, RuntimeLadder, type Capabilities, type RenderTier } from '../lib/gate';
+import { StageRenderer, STAGE_FOV, type Plane } from '../lib/stage/renderer';
+import { computeFocusState, circleOfConfusion, isFocusLocked } from '../lib/stage/focus';
+import { cameraFor, createPointerParallax, setParallaxTarget, easeParallax, resetParallax, type PointerParallax } from '../lib/stage/camera';
+import { computePlaneRect, projectPlaneToScreen } from '../lib/stage/layout';
+import { buildJourney, getSegmentAt, getChapterProgress, type Segment } from '../lib/stage/journey';
+import { capabilityStore, RuntimeLadder, type Capabilities } from '../lib/gate';
 import { ticker } from '../lib/ticker';
 import { chapters, getFeaturedPhotos, copy, flags, getPhotoSrc, getAspect, type Chapter, type Photo } from '../content';
+
+const PLANE_SPACING = 2.5; // Distance between planes in world units
 
 interface StageState {
   progress: number;
   segment: Segment;
-  localProgress: number;
   chapter: Chapter;
+  chapterProgress: number;
   frameIndex: number;
   focusLocked: boolean;
-  coc: number;
+  blur: number;
 }
 
 interface StageProps {
@@ -26,16 +28,17 @@ export default function Stage({ onFailure }: StageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<StageRenderer | null>(null);
-  const parallaxRef = useRef<PointerParallax>(createPointerParallax());
+  const parallaxTargetRef = useRef<PointerParallax>(createPointerParallax());
+  const parallaxCurrentRef = useRef<PointerParallax>(createPointerParallax());
   const ladderRef = useRef<RuntimeLadder | null>(null);
   const stateRef = useRef<StageState>({
     progress: 0,
     segment: { type: 'title', chapter: 'weddings', startP: 0, endP: 0.1 },
-    localProgress: 0,
     chapter: 'weddings',
+    chapterProgress: 0,
     frameIndex: 0,
     focusLocked: true,
-    coc: 0,
+    blur: 0,
   });
   const journeyRef = useRef(buildJourney());
   const [stageState, setStageState] = useState<StageState>(stateRef.current);
@@ -49,8 +52,6 @@ export default function Stage({ onFailure }: StageProps) {
   useEffect(() => {
     const unsubscribe = capabilityStore.subscribe((newCaps) => {
       setCaps(newCaps);
-      
-      // B2.4: if stage mode is disabled, report failure
       if (!newCaps.stageMode) {
         onFailure();
       }
@@ -63,15 +64,10 @@ export default function Stage({ onFailure }: StageProps) {
     if (!caps.stageMode) return;
 
     ladderRef.current = new RuntimeLadder(caps.tier, (newTier) => {
-      console.log('Runtime ladder downgrade to', newTier);
-      
-      // B2.4: if we hit static, report failure
       if (newTier === 'static') {
         onFailure();
         return;
       }
-
-      // B2.1: update renderer quality
       if (rendererRef.current) {
         const newDpr = newTier === 'A0' ? 1.5 : newTier === 'A1' ? 1.25 : 1;
         const enableBlur = newTier !== 'A2';
@@ -79,9 +75,7 @@ export default function Stage({ onFailure }: StageProps) {
       }
     });
 
-    return () => {
-      ladderRef.current = null;
-    };
+    return () => { ladderRef.current = null; };
   }, [caps.stageMode, caps.tier, onFailure]);
 
   // Initialize renderer
@@ -91,16 +85,13 @@ export default function Stage({ onFailure }: StageProps) {
     const renderer = new StageRenderer(canvasRef.current);
     rendererRef.current = renderer;
 
-    // B2.4: check if renderer failed
     if (renderer.getState() === 'failed') {
       onFailure();
       return;
     }
 
-    // B2.1: set initial quality
     renderer.setQuality(caps.tier, caps.dpr, caps.enableBlur);
 
-    // B1.1/B1.3: load textures from local files
     const allPhotos = chapters.flatMap(ch => getFeaturedPhotos(ch));
     allPhotos.forEach(photo => renderer.loadTexture(photo.id, getPhotoSrc(photo, 'texture')));
 
@@ -109,6 +100,9 @@ export default function Stage({ onFailure }: StageProps) {
       rendererRef.current = null;
     };
   }, [caps.stageMode, caps.tier, caps.dpr, caps.enableBlur, onFailure]);
+
+  // B3.10: Container height from journey total weight
+  const containerHeight = `${journeyRef.current.totalWeight}svh`;
 
   // Scroll handler
   useEffect(() => {
@@ -126,8 +120,6 @@ export default function Stage({ onFailure }: StageProps) {
       const scrolled = -rect.top;
       const progress = Math.max(0, Math.min(1, scrolled / scrollableDistance));
       targetProgressRef.current = progress;
-      
-      // B2.8: wake ticker on scroll
       ticker.wake();
     };
 
@@ -136,24 +128,31 @@ export default function Stage({ onFailure }: StageProps) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Pointer parallax
+  // B3.9: Pointer parallax - set target on move, ease per frame
   useEffect(() => {
     if (!caps.stageMode) return;
     
     const handlePointerMove = (e: PointerEvent) => {
       const x = (e.clientX / window.innerWidth) * 2 - 1;
       const y = (e.clientY / window.innerHeight) * 2 - 1;
-      parallaxRef.current = updatePointerParallax(parallaxRef.current, x, y, 0.016);
-      
-      // B2.8: wake ticker on pointer move
+      parallaxTargetRef.current = setParallaxTarget(parallaxTargetRef.current, x, y);
+      ticker.wake();
+    };
+    
+    const handlePointerLeave = () => {
+      parallaxTargetRef.current = resetParallax();
       ticker.wake();
     };
 
     window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    return () => window.removeEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerleave', handlePointerLeave);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerleave', handlePointerLeave);
+    };
   }, [caps.stageMode]);
 
-  // B2.8: subscribe to ticker for animation loop
+  // B2.8: Subscribe to ticker for animation loop
   useEffect(() => {
     if (!caps.stageMode) return;
 
@@ -163,9 +162,9 @@ export default function Stage({ onFailure }: StageProps) {
 
     const subscriber = {
       active: () => {
-        // B2.8: active while progress is changing or pointer is moving
         const progressDiff = Math.abs(targetProgressRef.current - smoothProgressRef.current);
-        return progressDiff > 0.001 || Math.abs(velocity) > 0.001;
+        const parallaxDiff = Math.abs(parallaxTargetRef.current.yaw - parallaxCurrentRef.current.yaw);
+        return progressDiff > 0.0001 || Math.abs(velocity) > 0.0001 || parallaxDiff > 0.0001;
       },
       update: (dt: number) => {
         const target = targetProgressRef.current;
@@ -180,29 +179,58 @@ export default function Stage({ onFailure }: StageProps) {
 
         const journey = journeyRef.current;
         const segment = getSegmentAt(journey, smoothProgressRef.current);
-        const localProgress = getLocalProgress(segment, smoothProgressRef.current);
         
-        let focusDistance = 0;
-        let currentCoc = 0;
+        // B3.2: Get chapter progress (continuous across whole chapter)
+        const chapterProgress = getChapterProgress(journey, segment.chapter, smoothProgressRef.current);
         
-        if (segment.type === 'frame' && segment.frameIndex !== undefined) {
-          focusDistance = segment.frameIndex;
-          currentCoc = 0;
+        // B3.4: Compute focus state from chapter progress
+        const chapterPhotos = getFeaturedPhotos(segment.chapter);
+        const totalFrames = chapterPhotos.length;
+        
+        let focusState;
+        let frameIndex: number;
+        
+        if (segment.type === 'title') {
+          // B3.4: During title, focus softly on first frame
+          focusState = {
+            focusPosition: 0,
+            focusedFrameIndex: 0,
+            isRacking: false,
+            rackProgress: 0,
+          };
+          frameIndex = 0;
         } else {
-          focusDistance = -0.5;
-          currentCoc = 0.5;
+          focusState = computeFocusState(chapterProgress, totalFrames);
+          frameIndex = segment.frameIndex ?? 0;
         }
-
-        const locked = isFocusLocked(currentCoc);
+        
+        const focusDepth = focusState.focusPosition;
+        const blur = circleOfConfusion(frameIndex, focusDepth, 1.0, 1.5);
+        const locked = isFocusLocked(blur);
+        
+        // B3.9: Ease parallax per frame
+        parallaxCurrentRef.current = easeParallax(
+          parallaxCurrentRef.current,
+          parallaxTargetRef.current,
+          dt
+        );
+        
+        // B3.3: Camera follows focus position
+        const camera = cameraFor(
+          segment.chapter,
+          chapterProgress,
+          focusDepth,
+          parallaxCurrentRef.current
+        );
         
         const newState: StageState = {
           progress: smoothProgressRef.current,
           segment,
-          localProgress,
           chapter: segment.chapter,
-          frameIndex: segment.frameIndex ?? 0,
+          chapterProgress,
+          frameIndex,
           focusLocked: locked,
-          coc: currentCoc,
+          blur,
         };
 
         stateRef.current = newState;
@@ -210,79 +238,107 @@ export default function Stage({ onFailure }: StageProps) {
 
         // Render WebGL
         if (rendererRef.current && rendererRef.current.getState() === 'ready') {
-          const camera = cameraFor(segment.chapter, localProgress, parallaxRef.current);
-          
-          // B2.1: limit planes based on tier
-          const chapterPhotos = getFeaturedPhotos(segment.chapter);
+          // Build planes in world units
           const maxPlanes = caps.maxPlanes;
+          const screenAspect = window.innerWidth / window.innerHeight;
           const planes: Plane[] = [];
           
           for (let i = 0; i < Math.min(chapterPhotos.length, maxPlanes); i++) {
             const photo = chapterPhotos[i];
-            const stageAspect = window.innerWidth / window.innerHeight;
-            const aspect = getAspect(photo);
-            const rect = computePlaneRect(aspect, stageAspect, i, chapterPhotos.length);
+            const [pw, ph] = getAspect(photo);
+            const photoAspect = pw / ph;
             
-            let opacity = 1;
-            if (segment.type === 'frame' && segment.frameIndex !== undefined) {
-              const dist = Math.abs(i - segment.frameIndex);
-              opacity = dist === 0 ? 1 : Math.max(0, 1 - dist * 0.5);
-            } else {
-              opacity = 0.4;
+            // B3.5: Compute plane rect in world units at this plane's distance
+            const planeDistance = camera.z - i * PLANE_SPACING;
+            if (planeDistance <= 0.1) continue; // Behind camera
+            
+            const rect = computePlaneRect(
+              photoAspect,
+              planeDistance,
+              STAGE_FOV,
+              screenAspect,
+              i,
+              chapterPhotos.length
+            );
+            
+            // B3.11: Compute opacity with fade
+            let opacity = 1.0;
+            const distFromFocus = Math.abs(i - focusDepth);
+            
+            // Fade far planes
+            if (distFromFocus > 3) {
+              opacity *= Math.max(0, 1 - (distFromFocus - 3) * 0.3);
             }
+            
+            // Fade near planes (already passed)
+            if (i < focusDepth - 0.5) {
+              const passed = focusDepth - i - 0.5;
+              opacity *= Math.max(0, 1 - passed * 0.5);
+            }
+            
+            if (opacity < 0.01) continue;
 
             planes.push({
               textureId: photo.id,
-              z: i * 2.5,
-              x: (rect.x - 0.5) * 3,
-              y: 0,
-              scaleX: rect.width * 3,
-              scaleY: rect.height * 3,
+              depth: i,
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
               opacity,
             });
           }
 
           rendererRef.current.setPlanes(planes);
           
-          // B2.2: get frame time for runtime ladder
-          const frameTime = rendererRef.current.render(
-            camera,
-            focusDistance * 2.5,
-            (z: number) => circleOfConfusion(z, focusDistance * 2.5, 4)
-          );
+          // B3.4: Blur function based on focus depth
+          const blurFn = (depth: number) => circleOfConfusion(depth, focusDepth, 1.0, 1.5);
+          
+          const frameTime = rendererRef.current.render(camera, blurFn, PLANE_SPACING);
           
           if (ladderRef.current) {
             ladderRef.current.recordFrame(frameTime);
           }
-        }
-
-        // Update screen rect for viewfinder
-        if (segment.type === 'frame' && segment.frameIndex !== undefined) {
-          const chapterPhotos = getFeaturedPhotos(segment.chapter);
-          const photo = chapterPhotos[segment.frameIndex];
-          if (photo && containerRef.current) {
+          
+          // B3.7: Update viewfinder rect from renderer matrices
+          const matrices = rendererRef.current.getLastMatrices();
+          if (matrices && containerRef.current) {
             const stageRect = containerRef.current.getBoundingClientRect();
-            const stageAspect = stageRect.width / stageRect.height;
-            const aspect = getAspect(photo);
-            const planeRect = computePlaneRect(aspect, stageAspect, segment.frameIndex, chapterPhotos.length);
-            const sr = getScreenRect(planeRect, stageRect.width, stageRect.height);
-            setScreenRect(sr);
+            const focusedPhoto = chapterPhotos[frameIndex];
+            if (focusedPhoto) {
+              const [pw, ph] = getAspect(focusedPhoto);
+              const photoAspect = pw / ph;
+              const planeDistance = camera.z - frameIndex * PLANE_SPACING;
+              const planeRect = computePlaneRect(
+                photoAspect,
+                planeDistance,
+                STAGE_FOV,
+                screenAspect,
+                frameIndex,
+                chapterPhotos.length
+              );
+              
+              const sr = projectPlaneToScreen(
+                planeRect,
+                camera.z,
+                frameIndex * PLANE_SPACING,
+                STAGE_FOV,
+                stageRect.width / stageRect.height,
+                stageRect.width,
+                stageRect.height
+              );
+              setScreenRect(sr);
+            }
           }
         }
       }
     };
 
-    const unsubscribe = ticker.subscribe(subscriber, 0); // priority 0 (highest)
+    const unsubscribe = ticker.subscribe(subscriber, 0);
     return unsubscribe;
   }, [caps.stageMode, caps.maxPlanes]);
 
   const currentChapterPhotos = getFeaturedPhotos(stageState.chapter);
-  const currentPhoto = stageState.segment.type === 'frame' && stageState.segment.frameIndex !== undefined
-    ? currentChapterPhotos[stageState.segment.frameIndex]
-    : null;
-
-  const journey = journeyRef.current;
-  const containerHeight = `${Math.max(journey.segments.length * 90, 400)}svh`;
 
   if (!caps.stageMode) return null;
 
@@ -302,7 +358,7 @@ export default function Stage({ onFailure }: StageProps) {
 
         {/* Viewfinder overlay */}
         <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-          {currentPhoto && screenRect.width > 0 && (
+          {screenRect.width > 0 && (
             <div
               className="absolute"
               style={{
@@ -332,14 +388,13 @@ export default function Stage({ onFailure }: StageProps) {
             </span>
           </div>
 
-          {flags.SHOW_CAPTURE && currentPhoto?.capture && (
+          {flags.SHOW_CAPTURE && currentChapterPhotos[stageState.frameIndex]?.capture && (
             <div className="absolute bottom-20 left-6 font-mono text-[11px] text-stage-muted tracking-wide">
-              {[
-                currentPhoto.capture.focal,
-                currentPhoto.capture.aperture,
-                currentPhoto.capture.shutter,
-                currentPhoto.capture.iso ? `ISO ${currentPhoto.capture.iso}` : null,
-              ].filter(Boolean).join(' / ')}
+              {(() => {
+                const c = currentChapterPhotos[stageState.frameIndex].capture!;
+                return [c.focal, c.aperture, c.shutter, c.iso ? `ISO ${c.iso}` : null]
+                  .filter(Boolean).join(' / ');
+              })()}
             </div>
           )}
         </div>

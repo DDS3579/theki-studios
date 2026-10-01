@@ -1,5 +1,9 @@
 // WebGL2 Renderer for the Pull Focus stage
-// B2.4: ready/failed state, context loss handling, quality changes
+// B3.1: Proper view transform (world moves by -camera)
+// B3.7: Exposes projection for viewfinder rect computation
+// B3.8: Yaw/pitch in view transform
+// B3.11: Culling and fading
+// B3.12: Blur multiplier and range as uniforms
 
 import type { CameraState } from './camera';
 import type { RenderTier } from '../gate';
@@ -11,13 +15,17 @@ in vec2 a_position;
 in vec2 a_uv;
 
 uniform mat4 u_projection;
+uniform mat4 u_view;
 uniform mat4 u_model;
 
 out vec2 v_uv;
+out float v_viewZ; // For culling in JS
 
 void main() {
-  gl_Position = u_projection * u_model * vec4(a_position, 0.0, 1.0);
+  vec4 viewPos = u_view * u_model * vec4(a_position, 0.0, 1.0);
+  gl_Position = u_projection * viewPos;
   v_uv = a_uv;
+  v_viewZ = viewPos.z;
 }
 `;
 
@@ -27,16 +35,17 @@ precision highp float;
 in vec2 v_uv;
 
 uniform sampler2D u_texture;
-uniform float u_coc;
+uniform float u_blur; // B3.12: blur amount (0-1)
 uniform float u_opacity;
 uniform float u_vignette;
 uniform bool u_enableBlur;
+uniform float u_maxBlurLod; // B3.12: max LOD bias for blur
 
 out vec4 fragColor;
 
 void main() {
-  // B2.1: only apply blur if enabled
-  float lodBias = u_enableBlur ? u_coc * 5.0 : 0.0;
+  // B3.12: blur uses configurable max LOD
+  float lodBias = u_enableBlur ? u_blur * u_maxBlurLod : 0.0;
   vec4 texColor = texture(u_texture, v_uv, lodBias);
   
   // sRGB to linear
@@ -61,15 +70,18 @@ interface TextureEntry {
 
 export interface Plane {
   textureId: string;
-  z: number;
-  x: number;
-  y: number;
-  scaleX: number;
-  scaleY: number;
+  depth: number; // Depth in the stack (0, 1, 2, ...) - positive = further from camera start
+  x: number; // World X position
+  y: number; // World Y position
+  width: number; // World width
+  height: number; // World height
   opacity: number;
 }
 
 export type RendererState = 'loading' | 'ready' | 'failed';
+
+// B3.7: FOV constant exported for layout calculations
+export const STAGE_FOV = Math.PI / 3.5; // ~51 degrees vertical
 
 export class StageRenderer {
   private gl: WebGL2RenderingContext | null = null;
@@ -84,17 +96,27 @@ export class StageRenderer {
   // B2.1: quality settings
   private enableBlur = true;
   private currentDpr = 1;
+  
+  // B3.12: configurable blur parameters
+  private maxBlurLod = 5.0;
 
   private uProjection: WebGLUniformLocation | null = null;
+  private uView: WebGLUniformLocation | null = null;
   private uModel: WebGLUniformLocation | null = null;
   private uTexture: WebGLUniformLocation | null = null;
-  private uCoc: WebGLUniformLocation | null = null;
+  private uBlur: WebGLUniformLocation | null = null;
   private uOpacity: WebGLUniformLocation | null = null;
   private uVignette: WebGLUniformLocation | null = null;
   private uEnableBlur: WebGLUniformLocation | null = null;
+  private uMaxBlurLod: WebGLUniformLocation | null = null;
 
   // B2.2: frame time tracking
   private lastFrameTime = 0;
+  
+  // B3.7: cached projection and view for viewfinder computation
+  private lastProjection: Float32Array | null = null;
+  private lastView: Float32Array | null = null;
+  private lastAspect = 1;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -129,12 +151,14 @@ export class StageRenderer {
       gl.useProgram(this.program);
 
       this.uProjection = gl.getUniformLocation(this.program, 'u_projection');
+      this.uView = gl.getUniformLocation(this.program, 'u_view');
       this.uModel = gl.getUniformLocation(this.program, 'u_model');
       this.uTexture = gl.getUniformLocation(this.program, 'u_texture');
-      this.uCoc = gl.getUniformLocation(this.program, 'u_coc');
+      this.uBlur = gl.getUniformLocation(this.program, 'u_blur');
       this.uOpacity = gl.getUniformLocation(this.program, 'u_opacity');
       this.uVignette = gl.getUniformLocation(this.program, 'u_vignette');
       this.uEnableBlur = gl.getUniformLocation(this.program, 'u_enableBlur');
+      this.uMaxBlurLod = gl.getUniformLocation(this.program, 'u_maxBlurLod');
 
       this.createQuad();
 
@@ -175,6 +199,16 @@ export class StageRenderer {
   // B2.2: get last frame time in ms
   getLastFrameTime(): number {
     return this.lastFrameTime;
+  }
+  
+  // B3.7: get cached matrices for viewfinder projection
+  getLastMatrices(): { projection: Float32Array; view: Float32Array; aspect: number } | null {
+    if (!this.lastProjection || !this.lastView) return null;
+    return {
+      projection: this.lastProjection,
+      view: this.lastView,
+      aspect: this.lastAspect,
+    };
   }
 
   private createShader(type: number, source: string): WebGLShader | null {
@@ -223,11 +257,12 @@ export class StageRenderer {
     if (!this.gl || !this.program) return;
     const gl = this.gl;
 
+    // Quad from -0.5 to 0.5 (will be scaled by model matrix)
     const vertices = new Float32Array([
-      -1, -1,  0, 1,
-       1, -1,  1, 1,
-      -1,  1,  0, 0,
-       1,  1,  1, 0,
+      -0.5, -0.5,  0, 1,
+       0.5, -0.5,  1, 1,
+      -0.5,  0.5,  0, 0,
+       0.5,  0.5,  1, 0,
     ]);
 
     const indices = new Uint16Array([0, 1, 2, 1, 3, 2]);
@@ -299,7 +334,12 @@ export class StageRenderer {
     this.planes = planes;
   }
 
-  render(camera: CameraState, focusDistance: number, cocFn: (z: number) => number): number {
+  // B3.1: Render with proper view transform
+  render(
+    camera: CameraState,
+    blurFn: (depth: number) => number,
+    planeSpacing: number = 2.5
+  ): number {
     if (!this.gl || !this.program || !this.vao || this.disposed) return 0;
     const gl = this.gl;
 
@@ -320,15 +360,28 @@ export class StageRenderer {
     gl.useProgram(this.program);
 
     const aspect = w / h;
-    const fov = Math.PI / 3.5;
+    this.lastAspect = aspect;
     const near = 0.1;
     const far = 100;
 
-    const projection = this.perspective(fov, aspect, near, far);
+    // B3.1: Build projection matrix
+    const projection = this.perspective(STAGE_FOV, aspect, near, far);
+    this.lastProjection = projection;
     gl.uniformMatrix4fv(this.uProjection, false, projection);
 
-    // Sort back to front
-    const sorted = [...this.planes].sort((a, b) => b.z - a.z);
+    // B3.1 & B3.8: Build view matrix (world moves by -camera)
+    const view = this.buildView(camera);
+    this.lastView = view;
+    gl.uniformMatrix4fv(this.uView, false, view);
+    
+    // B3.12: Set blur parameters
+    gl.uniform1i(this.uEnableBlur, this.enableBlur ? 1 : 0);
+    gl.uniform1f(this.uMaxBlurLod, this.maxBlurLod);
+
+    // B3.11: Sort back to front (deepest first) and cull
+    const sorted = [...this.planes]
+      .filter(p => p.opacity > 0.01) // Skip invisible planes
+      .sort((a, b) => b.depth - a.depth);
 
     gl.bindVertexArray(this.vao);
 
@@ -336,18 +389,30 @@ export class StageRenderer {
       const entry = this.textures.get(plane.textureId);
       if (!entry) continue;
 
-      const pz = -plane.z + camera.z;
-      const model = this.buildModel(
-        plane.x, plane.y, pz,
-        plane.scaleX, plane.scaleY,
-        camera
-      );
+      // B3.1: Plane position in world space
+      // depth is the stack position, multiplied by spacing
+      const planeZ = plane.depth * planeSpacing;
+      
+      // B3.11: Skip planes behind camera
+      const viewDistance = camera.z - planeZ;
+      if (viewDistance < near) continue;
+
+      // B3.1: Model matrix is just translate + scale (no rotation)
+      const model = this.buildModel(plane.x, plane.y, planeZ, plane.width, plane.height);
       
       gl.uniformMatrix4fv(this.uModel, false, model);
-      gl.uniform1f(this.uCoc, cocFn(plane.z));
-      gl.uniform1f(this.uOpacity, plane.opacity);
+      
+      // B3.12: Compute blur from plane depth
+      const blur = blurFn(plane.depth);
+      gl.uniform1f(this.uBlur, blur);
+      
+      // B3.11: Fade near and far planes
+      let opacity = plane.opacity;
+      if (viewDistance < 1.0) {
+        opacity *= viewDistance; // Fade as camera approaches
+      }
+      gl.uniform1f(this.uOpacity, opacity);
       gl.uniform1f(this.uVignette, 0.12);
-      gl.uniform1i(this.uEnableBlur, this.enableBlur ? 1 : 0);
 
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, entry.texture);
@@ -363,19 +428,55 @@ export class StageRenderer {
     return frameTime;
   }
 
+  // B3.1: Build view matrix (inverse of camera transform)
+  private buildView(camera: CameraState): Float32Array {
+    // View = Rotate(-pitch) * Rotate(-yaw) * Translate(-camera)
+    // Column-major for WebGL
+    
+    const cy = Math.cos(-camera.yaw);
+    const sy = Math.sin(-camera.yaw);
+    const cp = Math.cos(-camera.pitch);
+    const sp = Math.sin(-camera.pitch);
+    
+    // Rotation around Y (yaw)
+    const ry = new Float32Array([
+      cy, 0, -sy, 0,
+      0, 1, 0, 0,
+      sy, 0, cy, 0,
+      0, 0, 0, 1,
+    ]);
+    
+    // Rotation around X (pitch)
+    const rx = new Float32Array([
+      1, 0, 0, 0,
+      0, cp, sp, 0,
+      0, -sp, cp, 0,
+      0, 0, 0, 1,
+    ]);
+    
+    // Translation by -camera
+    const t = new Float32Array([
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      -camera.x, -camera.y, -camera.z, 1,
+    ]);
+    
+    // View = Rx * Ry * T
+    const ryt = this.mul4(ry, t);
+    return this.mul4(rx, ryt);
+  }
+
+  // B3.1: Build model matrix (translate + scale, no rotation)
   private buildModel(
     px: number, py: number, pz: number,
-    sx: number, sy: number,
-    camera: CameraState
+    sx: number, sy: number
   ): Float32Array {
-    const cos = Math.cos(camera.yaw);
-    const sin = Math.sin(camera.yaw);
-    
     return new Float32Array([
-      sx * cos, 0, sx * sin, 0,
+      sx, 0, 0, 0,
       0, sy, 0, 0,
-      -sx * sin, 0, sx * cos, 0,
-      px + camera.x, py + camera.y, pz, 1,
+      0, 0, 1, 0,
+      px, py, -pz, 1, // Negative Z because camera looks down -Z
     ]);
   }
 
@@ -388,6 +489,21 @@ export class StageRenderer {
       0, 0, (near + far) * rangeInv, -1,
       0, 0, near * far * rangeInv * 2, 0,
     ]);
+  }
+  
+  // 4x4 matrix multiplication (column-major)
+  private mul4(a: Float32Array, b: Float32Array): Float32Array {
+    const out = new Float32Array(16);
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        let sum = 0;
+        for (let k = 0; k < 4; k++) {
+          sum += a[k * 4 + j] * b[i * 4 + k];
+        }
+        out[i * 4 + j] = sum;
+      }
+    }
+    return out;
   }
 
   isTextureLoaded(id: string): boolean {

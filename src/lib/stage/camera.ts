@@ -1,98 +1,127 @@
-// Camera moves per chapter
-// Each chapter has its own camera language
+// Camera system: follows focus position with chapter-specific movements
+// B3.2: Uses chapter progress, not segment progress
+// B3.3: Camera follows focus position continuously
 
 import type { Chapter } from '../../content';
 
 export interface CameraState {
   x: number;
   y: number;
-  z: number;
+  z: number; // Distance from origin (positive = in front of camera)
   yaw: number;
   pitch: number;
+  targetDepth: number; // The depth position the camera is focused on
 }
 
-// Pointer parallax state
 export interface PointerParallax {
-  targetYaw: number;
-  targetOffsetX: number;
-  targetOffsetY: number;
-  currentYaw: number;
-  currentOffsetX: number;
-  currentOffsetY: number;
+  yaw: number;
+  offsetX: number;
+  offsetY: number;
 }
 
+// B3.9: Split parallax into target setting and per-frame easing
 export function createPointerParallax(): PointerParallax {
-  return {
-    targetYaw: 0,
-    targetOffsetX: 0,
-    targetOffsetY: 0,
-    currentYaw: 0,
-    currentOffsetX: 0,
-    currentOffsetY: 0,
-  };
+  return { yaw: 0, offsetX: 0, offsetY: 0 };
 }
 
-export function updatePointerParallax(
+// B3.9: Set target from pointer position (called on pointer move)
+export function setParallaxTarget(
   parallax: PointerParallax,
   pointerX: number, // -1 to 1
-  pointerY: number, // -1 to 1
-  dt: number
+  pointerY: number  // -1 to 1
 ): PointerParallax {
-  const inertia = 0.08;
-  const maxYaw = 1.5 * (Math.PI / 180); // 1.5 degrees
-  const maxOffset = 0.02; // 2%
-
+  const maxYaw = 0.05; // radians
+  const maxOffset = 0.3; // world units
+  
   return {
-    targetYaw: pointerX * maxYaw,
-    targetOffsetX: pointerX * maxOffset,
-    targetOffsetY: pointerY * maxOffset,
-    currentYaw: parallax.currentYaw + (parallax.targetYaw - parallax.currentYaw) * inertia,
-    currentOffsetX: parallax.currentOffsetX + (parallax.targetOffsetX - parallax.currentOffsetX) * inertia,
-    currentOffsetY: parallax.currentOffsetY + (parallax.targetOffsetY - parallax.currentOffsetY) * inertia,
+    yaw: pointerX * maxYaw,
+    offsetX: pointerX * maxOffset,
+    offsetY: pointerY * maxOffset,
   };
 }
 
-// Camera for each chapter based on local progress t (0-1 within chapter)
+// B3.9: Ease toward target (called every frame)
+export function easeParallax(
+  current: PointerParallax,
+  target: PointerParallax,
+  dt: number
+): PointerParallax {
+  const smoothing = 0.08; // Lower = smoother
+  const factor = 1 - Math.pow(smoothing, dt);
+  
+  return {
+    yaw: current.yaw + (target.yaw - current.yaw) * factor,
+    offsetX: current.offsetX + (target.offsetX - current.offsetX) * factor,
+    offsetY: current.offsetY + (target.offsetY - current.offsetY) * factor,
+  };
+}
+
+// Reset parallax when pointer leaves window
+export function resetParallax(): PointerParallax {
+  return { yaw: 0, offsetX: 0, offsetY: 0 };
+}
+
+// B3.2 & B3.3: Camera follows focus position with chapter-specific movements
 export function cameraFor(
   chapter: Chapter,
-  t: number,
+  chapterProgress: number, // 0-1 progress within the chapter
+  focusDepth: number, // The depth position being focused on
   parallax: PointerParallax
 ): CameraState {
-  const base: CameraState = { x: 0, y: 0, z: 5, yaw: 0, pitch: 0 };
-
+  // Base distance: camera sits slightly in front of the focused plane
+  const baseDistance = focusDepth + 2.0; // 2 units in front of focus
+  
+  // Chapter-specific movements are small offsets on top of base
   switch (chapter) {
-    case 'weddings':
+    case 'weddings': {
       // Slow dolly in along Z with longest focus pulls
+      const dollyOffset = chapterProgress * 0.5; // Subtle dolly
       return {
-        ...base,
-        z: 5 - t * 1.5, // Dolly from 5 to 3.5
-        yaw: parallax.currentYaw,
-        x: parallax.currentOffsetX,
-        y: parallax.currentOffsetY,
+        x: parallax.offsetX,
+        y: parallax.offsetY,
+        z: baseDistance - dollyOffset,
+        yaw: parallax.yaw,
+        pitch: 0,
+        targetDepth: focusDepth,
       };
-
-    case 'cars':
+    }
+    
+    case 'cars': {
       // Lateral track along X, planes at staggered depths
+      const trackOffset = (chapterProgress - 0.5) * 1.0; // Track left to right
       return {
-        ...base,
-        x: -1.5 + t * 3, // Track from left to right
-        z: 5,
-        yaw: parallax.currentYaw * 0.5,
-        y: parallax.currentOffsetY,
+        x: parallax.offsetX + trackOffset,
+        y: parallax.offsetY,
+        z: baseDistance,
+        yaw: parallax.yaw,
+        pitch: 0,
+        targetDepth: focusDepth,
       };
-
-    case 'photoshoots':
-      // Arc: camera orbits the stack by up to 14 degrees yaw
-      const arcAngle = (t - 0.5) * 14 * (Math.PI / 180); // ±7 degrees
+    }
+    
+    case 'photoshoots': {
+      // B3.8 & B3.13: Arc around focused plane, wrapped in block
+      const arcAngle = (chapterProgress - 0.5) * 0.3; // ±15 degrees max
+      const orbitRadius = 0.5; // Small orbit around focus
+      
       return {
-        ...base,
-        x: Math.sin(arcAngle) * 5,
-        z: Math.cos(arcAngle) * 5,
-        yaw: -arcAngle + parallax.currentYaw,
-        y: parallax.currentOffsetY,
+        x: parallax.offsetX + Math.sin(arcAngle) * orbitRadius,
+        y: parallax.offsetY,
+        z: baseDistance + Math.cos(arcAngle) * orbitRadius - orbitRadius,
+        yaw: parallax.yaw - arcAngle, // Orbit direction
+        pitch: 0,
+        targetDepth: focusDepth,
       };
-
+    }
+    
     default:
-      return base;
+      return {
+        x: parallax.offsetX,
+        y: parallax.offsetY,
+        z: baseDistance,
+        yaw: parallax.yaw,
+        pitch: 0,
+        targetDepth: focusDepth,
+      };
   }
 }
