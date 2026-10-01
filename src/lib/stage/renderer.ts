@@ -1,7 +1,8 @@
 // WebGL2 Renderer for the Pull Focus stage
-// Renders textured quads at different depths with rack focus blur via mip sampling
+// B2.4: ready/failed state, context loss handling, quality changes
 
 import type { CameraState } from './camera';
+import type { RenderTier } from '../gate';
 
 const VERTEX_SHADER = `#version 300 es
 precision highp float;
@@ -29,12 +30,13 @@ uniform sampler2D u_texture;
 uniform float u_coc;
 uniform float u_opacity;
 uniform float u_vignette;
+uniform bool u_enableBlur;
 
 out vec4 fragColor;
 
 void main() {
-  // Sample with mip-level bias based on CoC for blur
-  float lodBias = u_coc * 5.0;
+  // B2.1: only apply blur if enabled
+  float lodBias = u_enableBlur ? u_coc * 5.0 : 0.0;
   vec4 texColor = texture(u_texture, v_uv, lodBias);
   
   // sRGB to linear
@@ -57,7 +59,7 @@ interface TextureEntry {
   loaded: boolean;
 }
 
-interface Plane {
+export interface Plane {
   textureId: string;
   z: number;
   x: number;
@@ -67,6 +69,8 @@ interface Plane {
   opacity: number;
 }
 
+export type RendererState = 'loading' | 'ready' | 'failed';
+
 export class StageRenderer {
   private gl: WebGL2RenderingContext | null = null;
   private canvas: HTMLCanvasElement;
@@ -75,6 +79,11 @@ export class StageRenderer {
   private planes: Plane[] = [];
   private vao: WebGLVertexArrayObject | null = null;
   private disposed = false;
+  private _state: RendererState = 'loading';
+
+  // B2.1: quality settings
+  private enableBlur = true;
+  private currentDpr = 1;
 
   private uProjection: WebGLUniformLocation | null = null;
   private uModel: WebGLUniformLocation | null = null;
@@ -82,6 +91,10 @@ export class StageRenderer {
   private uCoc: WebGLUniformLocation | null = null;
   private uOpacity: WebGLUniformLocation | null = null;
   private uVignette: WebGLUniformLocation | null = null;
+  private uEnableBlur: WebGLUniformLocation | null = null;
+
+  // B2.2: frame time tracking
+  private lastFrameTime = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -89,33 +102,79 @@ export class StageRenderer {
   }
 
   private init() {
-    const gl = this.canvas.getContext('webgl2', {
-      alpha: true,
-      premultipliedAlpha: false,
-      antialias: false,
-      powerPreference: 'high-performance',
-    });
-    
-    if (!gl) return;
-    this.gl = gl;
+    try {
+      const gl = this.canvas.getContext('webgl2', {
+        alpha: true,
+        premultipliedAlpha: false,
+        antialias: false,
+        powerPreference: 'high-performance',
+      });
+      
+      if (!gl) {
+        this._state = 'failed';
+        return;
+      }
+      this.gl = gl;
 
-    this.program = this.createProgram(VERTEX_SHADER, FRAGMENT_SHADER);
-    if (!this.program) return;
+      // B2.4: context loss handling
+      this.canvas.addEventListener('webglcontextlost', this.handleContextLost);
+      this.canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
 
-    gl.useProgram(this.program);
+      this.program = this.createProgram(VERTEX_SHADER, FRAGMENT_SHADER);
+      if (!this.program) {
+        this._state = 'failed';
+        return;
+      }
 
-    this.uProjection = gl.getUniformLocation(this.program, 'u_projection');
-    this.uModel = gl.getUniformLocation(this.program, 'u_model');
-    this.uTexture = gl.getUniformLocation(this.program, 'u_texture');
-    this.uCoc = gl.getUniformLocation(this.program, 'u_coc');
-    this.uOpacity = gl.getUniformLocation(this.program, 'u_opacity');
-    this.uVignette = gl.getUniformLocation(this.program, 'u_vignette');
+      gl.useProgram(this.program);
 
-    this.createQuad();
+      this.uProjection = gl.getUniformLocation(this.program, 'u_projection');
+      this.uModel = gl.getUniformLocation(this.program, 'u_model');
+      this.uTexture = gl.getUniformLocation(this.program, 'u_texture');
+      this.uCoc = gl.getUniformLocation(this.program, 'u_coc');
+      this.uOpacity = gl.getUniformLocation(this.program, 'u_opacity');
+      this.uVignette = gl.getUniformLocation(this.program, 'u_vignette');
+      this.uEnableBlur = gl.getUniformLocation(this.program, 'u_enableBlur');
 
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.clearColor(0.141, 0.102, 0.071, 1.0);
+      this.createQuad();
+
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.clearColor(0.141, 0.102, 0.071, 1.0);
+
+      this._state = 'ready';
+    } catch (err) {
+      console.error('WebGL init failed:', err);
+      this._state = 'failed';
+    }
+  }
+
+  // B2.4: context loss handlers
+  private handleContextLost = (e: Event) => {
+    e.preventDefault();
+    console.warn('WebGL context lost');
+    this._state = 'failed';
+    this.gl = null;
+  };
+
+  private handleContextRestored = () => {
+    console.log('WebGL context restored, reinitializing');
+    this.init();
+  };
+
+  getState(): RendererState {
+    return this._state;
+  }
+
+  // B2.1: change quality settings
+  setQuality(tier: RenderTier, dpr: number, enableBlur: boolean) {
+    this.currentDpr = dpr;
+    this.enableBlur = enableBlur;
+  }
+
+  // B2.2: get last frame time in ms
+  getLastFrameTime(): number {
+    return this.lastFrameTime;
   }
 
   private createShader(type: number, source: string): WebGLShader | null {
@@ -240,11 +299,14 @@ export class StageRenderer {
     this.planes = planes;
   }
 
-  render(camera: CameraState, focusDistance: number, cocFn: (z: number) => number) {
-    if (!this.gl || !this.program || !this.vao || this.disposed) return;
+  render(camera: CameraState, focusDistance: number, cocFn: (z: number) => number): number {
+    if (!this.gl || !this.program || !this.vao || this.disposed) return 0;
     const gl = this.gl;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const startTime = performance.now();
+
+    // B2.1: use tier-specific DPR
+    const dpr = this.currentDpr;
     const w = Math.floor(this.canvas.clientWidth * dpr);
     const h = Math.floor(this.canvas.clientHeight * dpr);
     
@@ -274,7 +336,6 @@ export class StageRenderer {
       const entry = this.textures.get(plane.textureId);
       if (!entry) continue;
 
-      // Build model matrix: translate then scale
       const pz = -plane.z + camera.z;
       const model = this.buildModel(
         plane.x, plane.y, pz,
@@ -286,6 +347,7 @@ export class StageRenderer {
       gl.uniform1f(this.uCoc, cocFn(plane.z));
       gl.uniform1f(this.uOpacity, plane.opacity);
       gl.uniform1f(this.uVignette, 0.12);
+      gl.uniform1i(this.uEnableBlur, this.enableBlur ? 1 : 0);
 
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, entry.texture);
@@ -295,6 +357,10 @@ export class StageRenderer {
     }
 
     gl.bindVertexArray(null);
+
+    const frameTime = performance.now() - startTime;
+    this.lastFrameTime = frameTime;
+    return frameTime;
   }
 
   private buildModel(
@@ -302,7 +368,6 @@ export class StageRenderer {
     sx: number, sy: number,
     camera: CameraState
   ): Float32Array {
-    // Simple model matrix: translate + scale + slight yaw rotation
     const cos = Math.cos(camera.yaw);
     const sin = Math.sin(camera.yaw);
     
@@ -331,6 +396,10 @@ export class StageRenderer {
 
   dispose() {
     this.disposed = true;
+    if (this.canvas) {
+      this.canvas.removeEventListener('webglcontextlost', this.handleContextLost);
+      this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored);
+    }
     if (!this.gl) return;
     const gl = this.gl;
     
@@ -343,5 +412,3 @@ export class StageRenderer {
     if (this.program) gl.deleteProgram(this.program);
   }
 }
-
-export type { Plane };

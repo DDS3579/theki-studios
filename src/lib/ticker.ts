@@ -1,35 +1,60 @@
 // Shared ticker: single rAF loop with prioritized subscribers
-// Sleeps when nothing moves, pauses when tab is hidden
+// B2.8: wake method, object-keyed subscribers, proper sleep/wake
 
 type Subscriber = {
-  id: string;
-  priority: number; // lower = higher priority
   update: (dt: number) => void;
   active: () => boolean;
 };
 
 class Ticker {
-  private subscribers: Subscriber[] = [];
+  private subscribers: Map<Subscriber, number> = new Map(); // subscriber → priority
   private rafId: number | null = null;
   private lastTime = 0;
   private running = false;
+  private paused = false;
 
-  subscribe(sub: Subscriber) {
-    this.subscribers.push(sub);
-    this.subscribers.sort((a, b) => a.priority - b.priority);
+  // B2.8: subscribe with priority (lower = higher priority)
+  subscribe(sub: Subscriber, priority = 0): () => void {
+    this.subscribers.set(sub, priority);
     this.ensureRunning();
-    return () => this.unsubscribe(sub.id);
+    return () => this.unsubscribe(sub);
   }
 
-  unsubscribe(id: string) {
-    this.subscribers = this.subscribers.filter((s) => s.id !== id);
-    if (this.subscribers.every((s) => !s.active())) {
+  unsubscribe(sub: Subscriber) {
+    this.subscribers.delete(sub);
+    if (!this.hasActiveSubscribers()) {
       this.stop();
     }
   }
 
+  // B2.8: wake method for handlers to call
+  wake() {
+    if (!this.running && !this.paused) {
+      this.start();
+    }
+  }
+
+  pause() {
+    this.paused = true;
+    this.stop();
+  }
+
+  resume() {
+    this.paused = false;
+    if (this.hasActiveSubscribers()) {
+      this.start();
+    }
+  }
+
+  private hasActiveSubscribers(): boolean {
+    for (const [sub] of this.subscribers) {
+      if (sub.active()) return true;
+    }
+    return false;
+  }
+
   private ensureRunning() {
-    if (!this.running && this.subscribers.some((s) => s.active())) {
+    if (!this.running && !this.paused && this.hasActiveSubscribers()) {
       this.start();
     }
   }
@@ -56,8 +81,11 @@ class Ticker {
     const dt = Math.min((now - this.lastTime) / 1000, 0.1); // cap at 100ms
     this.lastTime = now;
 
+    // Sort by priority
+    const sorted = [...this.subscribers.entries()].sort((a, b) => a[1] - b[1]);
+    
     let anyActive = false;
-    for (const sub of this.subscribers) {
+    for (const [sub] of sorted) {
       if (sub.active()) {
         sub.update(dt);
         anyActive = true;
@@ -67,6 +95,7 @@ class Ticker {
     if (anyActive) {
       this.rafId = requestAnimationFrame(this.tick);
     } else {
+      // B2.8: sleep when nothing is moving
       this.running = false;
       this.rafId = null;
     }
@@ -75,9 +104,9 @@ class Ticker {
   // Pause when tab is hidden
   handleVisibility = () => {
     if (document.hidden) {
-      this.stop();
+      this.pause();
     } else {
-      this.ensureRunning();
+      this.resume();
     }
   };
 }
