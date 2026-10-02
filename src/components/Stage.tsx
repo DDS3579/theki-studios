@@ -5,7 +5,7 @@ import { computeFocusFromSegment } from '../lib/stage/focus';
 import { createPointerParallax, setParallaxTarget, easeParallax, cameraFor } from '../lib/stage/camera';
 import { computeChapterLayout, type PlaneLayout } from '../lib/stage/layout';
 import { StageRenderer, type Plane } from '../lib/stage/renderer';
-import { capabilityStore, RuntimeLadder } from '../lib/gate';
+import { capabilityStore, RuntimeLadder, type RenderTier } from '../lib/gate';
 import { ticker } from '../lib/ticker';
 import { lockScroll, unlockScroll } from '../lib/scrollLock';
 import {
@@ -79,6 +79,7 @@ const LoadingIndicator = memo(() => (
 
 // B12.53: Use shared scroll helper
 import { scrollToChapter as sharedScrollToChapter } from '../lib/scrollTo';
+import { DebugOverlay } from './DebugOverlay';
 
 interface StageProps {
   onFailure: () => void;
@@ -130,6 +131,16 @@ export default function Stage({ onFailure }: StageProps) {
   const ladderRef = useRef<RuntimeLadder | null>(null);
   const capsRef = useRef(capabilityStore.get());
   const lastTickTimeRef = useRef(performance.now());
+
+  // B12.80: Debug overlay refs
+  const chapterRef = useRef<Chapter>('weddings');
+  const segmentTypeRef = useRef<'title' | 'frame'>('title');
+  const frameIndexRef = useRef(0);
+  const isRackingRef = useRef(false);
+  const cameraRef = useRef({ x: 0, y: 0, z: 3, yaw: 0, pitch: 0 });
+  const tierRef = useRef<RenderTier>('A0');
+  const dprRef = useRef(1);
+  const planeCountRef = useRef(0);
 
   const closeContactSheet = useCallback(() => {
     setContactSheetOpen(false);
@@ -432,6 +443,16 @@ export default function Stage({ onFailure }: StageProps) {
             parallaxRef.current
           );
 
+          // B12.80: Update debug overlay refs
+          chapterRef.current = segment.chapter;
+          segmentTypeRef.current = segment.type;
+          frameIndexRef.current = segment.type === 'frame' ? (segment.frameIndex ?? 0) : 0;
+          isRackingRef.current = focusState.isRacking;
+          cameraRef.current = camera;
+          tierRef.current = capsRef.current.tier;
+          dprRef.current = capsRef.current.dpr;
+          planeCountRef.current = chapterPlanesRef.current.length;
+
           // B12.11: Group opacity
           let groupOpacity = 1;
           if (segment.type === 'title') {
@@ -628,6 +649,21 @@ export default function Stage({ onFailure }: StageProps) {
           ref={canvasRef}
           className="stage-canvas"
           aria-hidden="true"
+        />
+
+        {/* B12.80: Debug overlay */}
+        <DebugOverlay
+          progressRef={progressRef}
+          chapterRef={chapterRef}
+          segmentTypeRef={segmentTypeRef}
+          frameIndexRef={frameIndexRef}
+          focusRef={focusRef}
+          isRackingRef={isRackingRef}
+          cameraRef={cameraRef}
+          rendererRef={rendererRef}
+          tierRef={tierRef}
+          dprRef={dprRef}
+          planeCountRef={planeCountRef}
         />
 
         {/* B12.7: Live region for announcements */}
