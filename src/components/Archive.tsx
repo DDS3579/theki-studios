@@ -37,7 +37,7 @@ export default function Archive() {
   // B8.4: Single close handler driven by native dialog close event
   const handleDialogClose = useCallback(() => {
     setLightboxPhoto(null);
-    unlockScroll();
+    unlockScroll('lightbox');
   }, []);
 
   // B8.5: Navigate with preloading
@@ -123,7 +123,7 @@ export default function Archive() {
     setLightboxPhoto(photo);
     setLightboxIndex(index);
     setLoading(false);
-    lockScroll();
+    lockScroll('lightbox');
     
     // Show modal after state is set
     setTimeout(() => {

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
 import Stage from './components/Stage';
@@ -8,29 +8,52 @@ import Services from './components/Services';
 import Contact from './components/Contact';
 import Footer from './components/Footer';
 import { StageErrorBoundary, TopLevelErrorBoundary } from './components/ErrorBoundary';
-import { detectCapabilities } from './lib/gate';
+import { capabilityStore, type Capabilities } from './lib/gate';
 
 export default function App() {
-  const caps = detectCapabilities();
+  // B12.41: Subscribe to capability changes
+  const [caps, setCaps] = useState<Capabilities>(() => capabilityStore.get());
   
-  // B2.4: track if Stage has failed (remember for session)
+  useEffect(() => {
+    return capabilityStore.subscribe(setCaps);
+  }, []);
+  
+  // B12.42: Track if Stage has failed (with expiry in production)
   const [stageFailed, setStageFailed] = useState(() => {
     try {
-      return sessionStorage.getItem('theki_stage_failed') === 'true';
+      const stored = sessionStorage.getItem('theki_stage_failed');
+      if (!stored) return false;
+      
+      // B12.42: In dev, ignore the flag
+      if (import.meta.env.DEV) return false;
+      
+      // B12.42: Check expiry (30 minutes)
+      const data = JSON.parse(stored);
+      if (Date.now() - data.timestamp > 30 * 60 * 1000) {
+        sessionStorage.removeItem('theki_stage_failed');
+        return false;
+      }
+      
+      return data.failed === true;
     } catch {
       return false;
     }
   });
 
-  // B2.4: handle Stage failure
+  // B12.41: Handle Stage failure - only for real failures, not capability changes
   const handleStageFailure = useCallback(() => {
     setStageFailed(true);
     try {
-      sessionStorage.setItem('theki_stage_failed', 'true');
+      // B12.42: Store with timestamp for expiry
+      sessionStorage.setItem('theki_stage_failed', JSON.stringify({
+        failed: true,
+        timestamp: Date.now(),
+      }));
     } catch { /* ignore */ }
   }, []);
 
-  // B2.3: show Stage only if capabilities allow and it hasn't failed
+  // B12.41: Show Stage only if capabilities allow and it hasn't failed
+  // B12.43: Hysteresis band around breakpoint
   const showStage = caps.stageMode && !stageFailed;
 
   return (
@@ -50,7 +73,8 @@ export default function App() {
           <Hero />
 
           {/* B2.7: Works with error boundary */}
-          <StageErrorBoundary fallback={<WorksStatic />}>
+          {/* B12.47: Pass resetKey to allow recovery */}
+          <StageErrorBoundary fallback={<WorksStatic />} resetKey={caps.tier}>
             {showStage ? (
               <Stage onFailure={handleStageFailure} />
             ) : (

@@ -262,6 +262,10 @@ export default function Stage({ onFailure }: StageProps) {
     return () => {
       renderer.dispose();
       rendererRef.current = null;
+      // B12.39: Dispose ladder to clean up listener
+      if (ladderRef.current) {
+        ladderRef.current.dispose();
+      }
       ladderRef.current = null;
     };
   }, [onFailure, updateScrollMeasurements, updateProgressFromScroll, buildChapterPlanes]);
@@ -383,9 +387,12 @@ export default function Stage({ onFailure }: StageProps) {
                             Math.abs(parallaxRef.current.target.y - parallaxRef.current.current.y) +
                             Math.abs(parallaxRef.current.target.yaw - parallaxRef.current.current.yaw);
         
+        // B12.33: Also check if renderer needs frames (fade-in, texture load, resize)
+        const rendererNeedsFrames = rendererRef.current?.needsFrames() ?? false;
+        
         return progressDiff > PROGRESS_EPSILON || 
                parallaxDiff > PARALLAX_EPSILON ||
-               (rendererRef.current?.isTextureLoading() ?? false);
+               rendererNeedsFrames;
       },
       update: (dt: number) => {
         try {
@@ -575,6 +582,11 @@ export default function Stage({ onFailure }: StageProps) {
           console.error('Stage loop error:', err);
           onFailure();
         }
+      },
+      onError: (err: Error) => {
+        // B12.45: Handle ticker errors
+        console.error('Stage ticker error:', err);
+        onFailure();
       }
     };
 
@@ -602,12 +614,12 @@ export default function Stage({ onFailure }: StageProps) {
   // B12.12: Scroll lock coordination
   useEffect(() => {
     if (contactSheetOpen) {
-      lockScroll();
+      lockScroll('contactSheet');
     }
     
     return () => {
       if (contactSheetOpen) {
-        unlockScroll();
+        unlockScroll('contactSheet');
       }
     };
   }, [contactSheetOpen]);
@@ -762,10 +774,10 @@ function ContactSheet({ chapter, photos, onClose }: {
     if (dialogRef.current && !dialogRef.current.open) {
       dialogRef.current.showModal();
     }
-    lockScroll();
+    lockScroll('contactSheetDialog');
     
     return () => {
-      unlockScroll();
+      unlockScroll('contactSheetDialog');
     };
   }, []);
 

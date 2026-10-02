@@ -16,6 +16,10 @@ export interface Capabilities {
   enableBlur: boolean;
 }
 
+// B12.43: Cache GPU renderer string at module level
+let cachedGPURenderer: string | null = null;
+let gpuRendererChecked = false;
+
 // B2.3: subscribable capability store
 type Subscriber = (caps: Capabilities) => void;
 
@@ -126,19 +130,28 @@ class CapabilityStore {
     let tierDpr = dpr;
 
     if (stageMode) {
-      // B2.1: check GPU renderer string
+      // B12.43: Use cached GPU renderer string
       let isIntegratedGPU = false;
-      try {
-        const canvas = document.createElement('canvas');
-        const gl = canvas.getContext('webgl');
-        if (gl) {
-          const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-          if (debugInfo) {
-            const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-            isIntegratedGPU = /intel|mesa|llvmpipe/i.test(renderer);
+      if (!gpuRendererChecked) {
+        try {
+          const canvas = document.createElement('canvas');
+          const gl = canvas.getContext('webgl');
+          if (gl) {
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            if (debugInfo) {
+              cachedGPURenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+            }
+            // B12.43: Release the probe context immediately
+            const ext = gl.getExtension('WEBGL_lose_context');
+            if (ext) ext.loseContext();
           }
-        }
-      } catch { /* ignore */ }
+          gpuRendererChecked = true;
+        } catch { /* ignore */ }
+      }
+      
+      if (cachedGPURenderer) {
+        isIntegratedGPU = /intel|mesa|llvmpipe/i.test(cachedGPURenderer);
+      }
 
       // B2.1: tier assignment
       if (cores >= 8 && deviceMemory >= 8 && dpr <= 1.5 && !isIntegratedGPU) {
@@ -187,6 +200,7 @@ export class RuntimeLadder {
   private onDowngrade: (tier: RenderTier) => void;
   private frameCount = 0;
   private lastHiddenTime = 0;
+  private visibilityHandler: (() => void) | null = null; // B12.39
 
   constructor(initialTier: RenderTier, onDowngrade: (tier: RenderTier) => void) {
     this.currentTier = initialTier;
@@ -194,11 +208,20 @@ export class RuntimeLadder {
 
     // Track when tab is hidden
     if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', () => {
+      this.visibilityHandler = () => {
         if (document.hidden) {
           this.lastHiddenTime = performance.now();
         }
-      });
+      };
+      document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
+  }
+
+  // B12.39: Dispose method to clean up listener
+  dispose() {
+    if (this.visibilityHandler && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
     }
   }
 

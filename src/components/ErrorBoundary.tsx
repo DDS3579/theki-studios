@@ -3,18 +3,32 @@ import React from 'react';
 interface Props {
   children: React.ReactNode;
   fallback?: React.ReactNode;
+  resetKey?: string | number; // B12.47: Reset on key change
 }
 
 interface State {
   hasError: boolean;
   error: Error | null;
+  lastResetKey?: string | number; // B12.47: Track last reset key
 }
 
 // B2.7: Error boundary for Stage - falls back to static path
 export class StageErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, lastResetKey: props.resetKey };
+  }
+
+  // B12.47: Reset on key change
+  static getDerivedStateFromProps(props: Props, state: State): State | null {
+    if (props.resetKey !== state.lastResetKey) {
+      return {
+        hasError: false,
+        error: null,
+        lastResetKey: props.resetKey,
+      };
+    }
+    return null;
   }
 
   static getDerivedStateFromError(error: Error): State {
@@ -22,7 +36,8 @@ export class StageErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Stage error:', error, errorInfo);
+    // B12.47: Log error in a single place
+    console.error('Stage error boundary caught:', error, errorInfo);
   }
 
   render() {

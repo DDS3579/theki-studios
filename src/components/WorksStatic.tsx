@@ -1,12 +1,9 @@
 import { chapters, copy, getFeaturedPhotos, flags, getPhotoSrc, getPhotoSrcSet, getPhotoSizes, getAspect, type Chapter } from '../content';
-import { detectCapabilities } from '../lib/gate';
 import { useScrollReveal } from '../lib/useScrollReveal';
 
-// Static path: renders chapters as editorial sequences for mobile/reduced motion
+// B12.40: Static path - always renders, no capability check
+// App decides which component to show (Stage or WorksStatic)
 export default function WorksStatic() {
-  const caps = detectCapabilities();
-  if (caps.stageMode) return null;
-
   return (
     <section id="work" className="bg-stage" aria-label="Our work">
       {chapters.map((chapter, i) => (

@@ -63,6 +63,8 @@ interface TextureEntry {
   loaded: boolean;
   failed: boolean;
   fadeProgress: number;
+  url: string; // B12.32: Store URL for context restore
+  id: string; // B12.32: Store ID for context restore
 }
 
 export interface Plane {
@@ -84,6 +86,8 @@ export class StageRenderer {
   private ibo: WebGLBuffer | null = null;
   private disposed = false;
   private _state: RendererState = 'loading';
+  private contextRestoreTimeout: number | null = null; // B12.32
+  private contextListenersAdded = false; // B12.32
 
   private enableBlur = true;
   private currentDpr = 1;
@@ -133,6 +137,9 @@ export class StageRenderer {
 
   constructor(canvas: HTMLCanvasElement, tier: RenderTier = 'A0') {
     this.canvas = canvas;
+    // B12.34: Initialize cached size from canvas client size
+    this.cachedWidth = canvas.clientWidth;
+    this.cachedHeight = canvas.clientHeight;
     this.init(tier);
     this.setupResizeObserver();
   }
@@ -166,8 +173,12 @@ export class StageRenderer {
       }
       this.gl = gl;
 
-      this.canvas.addEventListener('webglcontextlost', this.handleContextLost);
-      this.canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
+      // B12.32: Only add listeners once in constructor, not on every init
+      if (!this.contextListenersAdded) {
+        this.canvas.addEventListener('webglcontextlost', this.handleContextLost);
+        this.canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
+        this.contextListenersAdded = true;
+      }
 
       this.program = this.createProgram(VERTEX_SHADER, FRAGMENT_SHADER);
       if (!this.program) {
@@ -203,14 +214,99 @@ export class StageRenderer {
     }
   }
 
+  // B12.32: Context loss handling - don't mark as failed, pause drawing
   private handleContextLost = (e: Event) => {
     e.preventDefault();
-    this._state = 'failed';
+    this._state = 'loading'; // Pause, don't fail
     this.gl = null;
+    // B12.32: Start restore timeout
+    this.contextRestoreTimeout = window.setTimeout(() => {
+      if (this._state === 'loading' && this.onTooManyFailures) {
+        this._state = 'failed';
+        this.onTooManyFailures();
+      }
+    }, 5000);
   };
 
+  // B12.32: Context restore - rebuild everything and re-queue textures
   private handleContextRestored = () => {
-    this.init('A0');
+    if (this.contextRestoreTimeout) {
+      clearTimeout(this.contextRestoreTimeout);
+      this.contextRestoreTimeout = null;
+    }
+    
+    // Re-initialize WebGL
+    const gl = this.canvas.getContext('webgl2', {
+      alpha: false,
+      antialias: false,
+      powerPreference: 'default',
+    });
+    
+    if (!gl) {
+      this._state = 'failed';
+      if (this.onTooManyFailures) this.onTooManyFailures();
+      return;
+    }
+    
+    this.gl = gl;
+    
+    // Rebuild program and buffers
+    this.program = this.createProgram(VERTEX_SHADER, FRAGMENT_SHADER);
+    if (!this.program) {
+      this._state = 'failed';
+      if (this.onTooManyFailures) this.onTooManyFailures();
+      return;
+    }
+    
+    gl.useProgram(this.program);
+    
+    // Re-get uniform locations
+    this.uProjection = gl.getUniformLocation(this.program, 'u_projection');
+    this.uView = gl.getUniformLocation(this.program, 'u_view');
+    this.uModel = gl.getUniformLocation(this.program, 'u_model');
+    this.uTexture = gl.getUniformLocation(this.program, 'u_texture');
+    this.uBlur = gl.getUniformLocation(this.program, 'u_blur');
+    this.uOpacity = gl.getUniformLocation(this.program, 'u_opacity');
+    this.uVignette = gl.getUniformLocation(this.program, 'u_vignette');
+    this.uEnableBlur = gl.getUniformLocation(this.program, 'u_enableBlur');
+    this.uMaxBlurLod = gl.getUniformLocation(this.program, 'u_maxBlurLod');
+    
+    gl.uniform1i(this.uTexture, 0);
+    gl.uniform1f(this.uVignette, 0.12);
+    
+    this.createQuad();
+    
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.clearColor(0.141, 0.102, 0.071, 1.0);
+    
+    // B12.32: Re-queue all textures from stored URLs
+    for (const entry of this.textures.values()) {
+      entry.texture = gl.createTexture()!;
+      entry.loaded = false;
+      entry.failed = false;
+      entry.fadeProgress = 0;
+      
+      // Re-upload placeholder
+      gl.bindTexture(gl.TEXTURE_2D, entry.texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+        new Uint8Array([56, 42, 30, 255]));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      
+      // Re-queue load
+      this.queueTextureLoad(entry.id, entry.url, 0);
+    }
+    
+    this._state = 'ready';
+    this.markDirty();
+    
+    // B12.32: Wake ticker to resume rendering
+    if (typeof window !== 'undefined' && (window as any).ticker) {
+      (window as any).ticker.wake();
+    }
   };
 
   getState(): RendererState {
@@ -311,6 +407,17 @@ export class StageRenderer {
 
   isTextureLoading(): boolean {
     return this.activeTextureLoads > 0;
+  }
+
+  // B12.33: Check if renderer needs frames (for ticker activity check)
+  needsFrames(): boolean {
+    if (this.activeTextureLoads > 0) return true;
+    if (this.projectionDirty) return true;
+    // Check if any texture is fading in
+    for (const entry of this.textures.values()) {
+      if (entry.loaded && entry.fadeProgress < 1) return true;
+    }
+    return false;
   }
 
   private createShader(type: number, source: string): WebGLShader | null {
@@ -425,7 +532,7 @@ export class StageRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    this.textures.set(id, { texture, loaded: false, failed: false, fadeProgress: 0 });
+    this.textures.set(id, { texture, loaded: false, failed: false, fadeProgress: 0, url, id });
 
     const abortController = new AbortController();
     this.abortControllers.set(id, abortController);
@@ -435,12 +542,11 @@ export class StageRenderer {
 
     while (retryCount <= maxRetries) {
       try {
-        const response = await Promise.race([
-          fetch(url, { signal: abortController.signal }),
-          new Promise<Response>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout')), 10000)
-          ),
-        ]);
+        // B12.35: Use AbortSignal.timeout to avoid timer leak
+        const timeoutSignal = AbortSignal.timeout(10000);
+        const combinedSignal = AbortSignal.any([abortController.signal, timeoutSignal]);
+        
+        const response = await fetch(url, { signal: combinedSignal });
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -453,15 +559,15 @@ export class StageRenderer {
           return;
         }
 
+        // B12.30: Don't resize - preserve aspect ratio and original dimensions
         const bitmap = await createImageBitmap(blob, {
           colorSpaceConversion: 'none',
-          resizeWidth: 2048,
-          resizeHeight: 2048,
           resizeQuality: 'high',
         });
 
         if (this.disposed) {
           gl.deleteTexture(texture);
+          bitmap.close(); // B12.30: Release bitmap
           return;
         }
 
@@ -470,6 +576,9 @@ export class StageRenderer {
         gl.generateMipmap(gl.TEXTURE_2D);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        
+        // B12.30: Release bitmap after upload to GPU
+        bitmap.close();
 
         const entry = this.textures.get(id);
         if (entry) {
@@ -487,6 +596,12 @@ export class StageRenderer {
 
         return;
       } catch (err) {
+        // B12.31: Don't count aborted loads or disposed renderer as failures
+        if (this.disposed || (err instanceof Error && err.name === 'AbortError')) {
+          this.abortControllers.delete(id);
+          return;
+        }
+        
         if (retryCount < maxRetries) {
           retryCount++;
         } else {
@@ -522,6 +637,9 @@ export class StageRenderer {
     groupOpacity: number
   ): number {
     if (!this.gl || !this.program || !this.vao || this.disposed) return 0;
+    
+    // B12.34: Skip rendering if size is zero
+    if (this.cachedWidth === 0 || this.cachedHeight === 0) return 0;
 
     const cameraChanged = !this.lastCamera ||
       this.lastCamera.x !== camera.x ||

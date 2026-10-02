@@ -59,17 +59,17 @@ export default function Header() {
       if (dialogRef.current && !dialogRef.current.open) {
         dialogRef.current.showModal();
       }
-      lockScroll();
+      lockScroll('mobileMenu');
     } else {
       if (dialogRef.current?.open) {
         dialogRef.current.close();
       }
-      unlockScroll();
+      unlockScroll('mobileMenu');
     }
     
     return () => {
       if (menuOpen) {
-        unlockScroll();
+        unlockScroll('mobileMenu');
       }
     };
   }, [menuOpen]);
