@@ -3,7 +3,7 @@ import { chapters, getFeaturedPhotos, copy, flags, getPhotoSrc, getAspect, type 
 import { buildJourney, getSegmentAt, getLocalProgress, getChapterProgress } from '../lib/stage/journey';
 import { computeFocusFromSegment } from '../lib/stage/focus';
 import { createPointerParallax, setParallaxTarget, easeParallax, cameraFor } from '../lib/stage/camera';
-import { computeChapterLayout, projectPlaneToScreen, type PlaneLayout } from '../lib/stage/layout';
+import { computeChapterLayout, type PlaneLayout } from '../lib/stage/layout';
 import { StageRenderer, type Plane } from '../lib/stage/renderer';
 import { capabilityStore, RuntimeLadder } from '../lib/gate';
 import { ticker } from '../lib/ticker';
@@ -517,10 +517,9 @@ export default function Stage({ onFailure }: StageProps) {
             ladderRef.current.recordFrame(realDt * 1000);
           }
 
-          // B12.5: Update viewfinder
-          if (viewfinderRef.current && segment.type === 'frame' && !loading) {
+          // B12.25: Update viewfinder using renderer's projection (uses cached matrices)
+          if (viewfinderRef.current && segment.type === 'frame' && !loading && rendererRef.current) {
             const frameIndex = segment.frameIndex ?? 0;
-            const { stageWidth, stageHeight } = scrollMeasurementsRef.current;
             
             // Interpolate between current and next photo during rack
             let viewScreenRect;
@@ -538,40 +537,37 @@ export default function Stage({ onFailure }: StageProps) {
                   height: currentLayout.height + (nextLayout.height - currentLayout.height) * t,
                 };
                 
-                const photoZ = -frameIndex * PLANE_SPACING + t * PLANE_SPACING;
-                viewScreenRect = projectPlaneToScreen(
-                  interpLayout,
-                  camera.x,
-                  camera.y,
-                  camera.z,
-                  camera.yaw,
-                  photoZ,
-                  stageWidth,
-                  stageHeight
-                );
+                // B12.20: Correct distance formula: camera.z + index * PLANE_SPACING
+                const photoZ = -(frameIndex + t) * PLANE_SPACING;
+                viewScreenRect = rendererRef.current.projectPlaneToScreen(interpLayout, photoZ);
               }
             } else {
               const layout = chapterLayoutRef.current[frameIndex];
               if (layout) {
+                // B12.20: Correct distance formula
                 const photoZ = -frameIndex * PLANE_SPACING;
-                viewScreenRect = projectPlaneToScreen(
-                  layout,
-                  camera.x,
-                  camera.y,
-                  camera.z,
-                  camera.yaw,
-                  photoZ,
-                  stageWidth,
-                  stageHeight
-                );
+                viewScreenRect = rendererRef.current.projectPlaneToScreen(layout, photoZ);
               }
             }
             
             if (viewScreenRect && viewfinderRef.current) {
-              viewfinderRef.current.style.left = `${viewScreenRect.left}px`;
-              viewfinderRef.current.style.top = `${viewScreenRect.top}px`;
-              viewfinderRef.current.style.width = `${viewScreenRect.width}px`;
-              viewfinderRef.current.style.height = `${viewScreenRect.height}px`;
+              // Only update if changed by more than 0.5px (avoid sub-pixel jitter)
+              const currentLeft = parseFloat(viewfinderRef.current.style.left) || 0;
+              const currentTop = parseFloat(viewfinderRef.current.style.top) || 0;
+              const currentWidth = parseFloat(viewfinderRef.current.style.width) || 0;
+              const currentHeight = parseFloat(viewfinderRef.current.style.height) || 0;
+              
+              if (
+                Math.abs(viewScreenRect.left - currentLeft) > 0.5 ||
+                Math.abs(viewScreenRect.top - currentTop) > 0.5 ||
+                Math.abs(viewScreenRect.width - currentWidth) > 0.5 ||
+                Math.abs(viewScreenRect.height - currentHeight) > 0.5
+              ) {
+                viewfinderRef.current.style.left = `${viewScreenRect.left}px`;
+                viewfinderRef.current.style.top = `${viewScreenRect.top}px`;
+                viewfinderRef.current.style.width = `${viewScreenRect.width}px`;
+                viewfinderRef.current.style.height = `${viewScreenRect.height}px`;
+              }
             }
           }
         } catch (err) {

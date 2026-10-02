@@ -236,6 +236,67 @@ export class StageRenderer {
     };
   }
 
+  // B12.25: Project a plane's corners to screen coordinates using cached matrices
+  // This ensures the viewfinder uses the exact same transformation as the renderer
+  projectPlaneToScreen(
+    layout: PlaneLayout,
+    photoZ: number
+  ): { left: number; top: number; width: number; height: number } | null {
+    if (!this.lastProjection || !this.lastView) return null;
+
+    const projection = this.lastProjection;
+    const view = this.lastView;
+
+    // Plane corners in world space (centered at layout.x, layout.y, photoZ)
+    const halfW = layout.width / 2;
+    const halfH = layout.height / 2;
+    const corners = [
+      [layout.x - halfW, layout.y - halfH, photoZ], // top-left
+      [layout.x + halfW, layout.y - halfH, photoZ], // top-right
+      [layout.x + halfW, layout.y + halfH, photoZ], // bottom-right
+      [layout.x - halfW, layout.y + halfH, photoZ], // bottom-left
+    ];
+
+    // Transform each corner through view and projection
+    const screenCorners = corners.map(corner => {
+      // View transform
+      const vx = view[0] * corner[0] + view[4] * corner[1] + view[8] * corner[2] + view[12];
+      const vy = view[1] * corner[0] + view[5] * corner[1] + view[9] * corner[2] + view[13];
+      const vz = view[2] * corner[0] + view[6] * corner[1] + view[10] * corner[2] + view[14];
+      const vw = view[3] * corner[0] + view[7] * corner[1] + view[11] * corner[2] + view[15];
+
+      // Projection transform
+      const px = projection[0] * vx + projection[4] * vy + projection[8] * vz + projection[12] * vw;
+      const py = projection[1] * vx + projection[5] * vy + projection[9] * vz + projection[13] * vw;
+      const pw = projection[3] * vx + projection[7] * vy + projection[11] * vz + projection[15] * vw;
+
+      // Perspective divide and convert to screen coordinates
+      const ndcX = px / pw;
+      const ndcY = py / pw;
+
+      // NDC to screen: [-1, 1] -> [0, screenWidth/Height]
+      const screenX = (ndcX + 1) * 0.5 * this.cachedWidth;
+      const screenY = (1 - ndcY) * 0.5 * this.cachedHeight; // Flip Y
+
+      return [screenX, screenY];
+    });
+
+    // Find bounding box
+    const xs = screenCorners.map(c => c[0]);
+    const ys = screenCorners.map(c => c[1]);
+    const left = Math.min(...xs);
+    const right = Math.max(...xs);
+    const top = Math.min(...ys);
+    const bottom = Math.max(...ys);
+
+    return {
+      left,
+      top,
+      width: right - left,
+      height: bottom - top,
+    };
+  }
+
   markDirty() {
     this.dirty = true;
   }
@@ -597,36 +658,46 @@ export class StageRenderer {
     return frameTime;
   }
 
+  // B12.23: Fixed view matrix construction
+  // Order: translation * yaw * pitch (applied right to left)
+  // Uses separate scratch matrices to avoid aliasing
   private buildView(camera: CameraState, out: Float32Array) {
     const cy = Math.cos(-camera.yaw);
     const sy = Math.sin(-camera.yaw);
     const cp = Math.cos(-camera.pitch);
     const sp = Math.sin(-camera.pitch);
 
-    this.tempMatrix1.set([
-      cy, 0, -sy, 0,
-      0, 1, 0, 0,
-      sy, 0, cy, 0,
-      0, 0, 0, 1,
-    ]);
-
-    this.tempMatrix2.set([
-      1, 0, 0, 0,
-      0, cp, sp, 0,
-      0, -sp, cp, 0,
-      0, 0, 0, 1,
-    ]);
-
-    const t: Float32Array = this.tempMatrix1;
-    t.set([
+    // Step 1: Translation by -camera position
+    const translation = this.tempMatrix1;
+    translation.set([
       1, 0, 0, 0,
       0, 1, 0, 0,
       0, 0, 1, 0,
       -camera.x, -camera.y, -camera.z, 1,
     ]);
 
-    this.mul4Into(this.tempMatrix2, t, this.tempMatrix1);
-    this.mul4Into(this.tempMatrix1, this.tempMatrix2, out);
+    // Step 2: Yaw rotation (around Y axis)
+    const yaw = this.tempMatrix2;
+    yaw.set([
+      cy, 0, -sy, 0,
+      0, 1, 0, 0,
+      sy, 0, cy, 0,
+      0, 0, 0, 1,
+    ]);
+
+    // Step 3: Pitch rotation (around X axis) - use a separate buffer
+    const pitch = new Float32Array([
+      1, 0, 0, 0,
+      0, cp, sp, 0,
+      0, -sp, cp, 0,
+      0, 0, 0, 1,
+    ]);
+
+    // Combine: view = pitch * yaw * translation
+    // First: yaw * translation -> tempMatrix1
+    this.mul4Into(yaw, translation, this.tempMatrix1);
+    // Then: pitch * (yaw * translation) -> out
+    this.mul4Into(pitch, this.tempMatrix1, out);
   }
 
   private buildModel(

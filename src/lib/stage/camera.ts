@@ -111,9 +111,4 @@ export function cameraFor(
   };
 }
 
-// Compute distance from camera to photo at index i
-// Camera at z, photo at -i * PLANE_SPACING
-// Distance = camera.z - photo.z = camera.z - (-i * PLANE_SPACING) = camera.z + i * PLANE_SPACING
-export function distanceToPhoto(cameraZ: number, photoIndex: number): number {
-  return cameraZ + photoIndex * PLANE_SPACING;
-}
+

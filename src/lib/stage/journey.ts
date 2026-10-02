@@ -116,7 +116,8 @@ export function getChapterRange(journey: JourneyState, chapter: Chapter): Chapte
   return journey.chapterRanges.find(r => r.chapter === chapter);
 }
 
-// B3.2: Get progress within a chapter (0-1)
+// B12.28: Get progress within a chapter (0-1), including the title segment
+// This is used for camera chapter moves (dolly, track, arc)
 export function getChapterProgress(journey: JourneyState, chapter: Chapter, globalP: number): number {
   const range = getChapterRange(journey, chapter);
   if (!range) return 0;
