@@ -40,12 +40,15 @@
   }
 
   /* B0.2: dialog reset inside @layer base so utility backgrounds win */
+  /* B12.54: Add max-width and max-height to remove browser default margins */
   dialog {
     border: none;
     padding: 0;
     /* background removed — let utility classes (bg-paper, bg-stage/95, etc.) decide */
     width: 100%;
     height: 100dvh;
+    max-width: none;
+    max-height: none;
     margin: 0;
   }
   dialog::backdrop {

@@ -77,21 +77,8 @@ const LoadingIndicator = memo(() => (
   </div>
 ));
 
-function scrollToChapter(container: HTMLElement, chapter: Chapter, instant = false) {
-  const journey = buildJourney();
-  const chapterRange = journey.chapterRanges.find(r => r.chapter === chapter);
-  if (!chapterRange) return;
-
-  const containerRect = container.getBoundingClientRect();
-  const containerTop = containerRect.top + window.scrollY;
-  const scrollableDistance = container.offsetHeight - window.innerHeight;
-  const targetScroll = containerTop + chapterRange.startP * scrollableDistance;
-
-  window.scrollTo({
-    top: targetScroll,
-    behavior: instant ? 'instant' : 'smooth'
-  });
-}
+// B12.53: Use shared scroll helper
+import { scrollToChapter as sharedScrollToChapter } from '../lib/scrollTo';
 
 interface StageProps {
   onFailure: () => void;
@@ -604,9 +591,7 @@ export default function Stage({ onFailure }: StageProps) {
     const hash = window.location.hash.slice(1);
     if (hash && chapters.includes(hash as Chapter)) {
       setTimeout(() => {
-        if (containerRef.current) {
-          scrollToChapter(containerRef.current, hash as Chapter, true);
-        }
+        sharedScrollToChapter(hash as Chapter, true);
       }, 100);
     }
   }, []);
@@ -633,6 +618,7 @@ export default function Stage({ onFailure }: StageProps) {
       className="relative"
       style={{ height: `${journeyRef.current.totalWeight}svh` }}
       id="work"
+      data-mode="stage"
     >
       <div
         ref={stageRef}
@@ -702,9 +688,7 @@ export default function Stage({ onFailure }: StageProps) {
             <button
               key={ch}
               onClick={() => {
-                if (containerRef.current) {
-                  scrollToChapter(containerRef.current, ch);
-                }
+                sharedScrollToChapter(ch);
               }}
               className={`group relative w-6 h-6 flex items-center justify-center`}
               aria-label={`Go to ${copy.chapters[ch].title}`}

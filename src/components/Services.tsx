@@ -1,34 +1,10 @@
-import { services, type Chapter } from '../content';
+import { services } from '../content';
 import { useScrollReveal } from '../lib/useScrollReveal';
-
-// B9.8: Scroll to chapter helper
-function scrollToChapter(chapter: Chapter) {
-  const element = document.getElementById(`chapter-${chapter}`);
-  if (!element) return;
-
-  const headerHeight = 80;
-  const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
-  const offsetPosition = elementPosition - headerHeight;
-
-  window.scrollTo({
-    top: offsetPosition,
-    behavior: 'smooth'
-  });
-}
+import { scrollToChapter, scrollToSection } from '../lib/scrollTo';
 
 // B9.8: Scroll to contact with service preselect
 function scrollToContactWithService(serviceId: string) {
-  const contactSection = document.getElementById('contact');
-  if (!contactSection) return;
-
-  const headerHeight = 80;
-  const elementPosition = contactSection.getBoundingClientRect().top + window.pageYOffset;
-  const offsetPosition = elementPosition - headerHeight;
-
-  window.scrollTo({
-    top: offsetPosition,
-    behavior: 'smooth'
-  });
+  scrollToSection('contact');
 
   // B9.8: Preselect service after scroll
   setTimeout(() => {

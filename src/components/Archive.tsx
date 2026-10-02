@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   chapters,
   copy,
@@ -122,14 +122,16 @@ export default function Archive() {
     const index = getPhotoDisplayIndex(photo.id);
     setLightboxPhoto(photo);
     setLightboxIndex(index);
-    setLoading(false);
+    setLoading(true); // B12.67: Show loading on first open too
     lockScroll('lightbox');
-    
-    // Show modal after state is set
-    setTimeout(() => {
-      dialogLightboxRef.current?.showModal();
-    }, 0);
   }, []);
+
+  // B12.67: Open dialog from effect when photo changes
+  useEffect(() => {
+    if (lightboxPhoto && dialogLightboxRef.current && !dialogLightboxRef.current.open) {
+      dialogLightboxRef.current.showModal();
+    }
+  }, [lightboxPhoto]);
 
   return (
     <section
@@ -228,7 +230,7 @@ export default function Archive() {
                 <img
                   src={getPhotoSrc(lightboxPhoto, 'large')}
                   srcSet={getPhotoSrcSet(lightboxPhoto)}
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 1600px"
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 1200px"
                   alt={lightboxPhoto.alt}
                   className="max-w-full max-h-[70dvh] object-contain"
                   width={lightboxPhoto.width}
@@ -283,11 +285,15 @@ function JustifiedRows({ photos, onPhotoClick }: {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
-  // B8.2: Measure container width with ResizeObserver
-  useEffect(() => {
+  // B12.63: Measure container width synchronously before first paint
+  useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    // Initial measurement
+    setContainerWidth(container.clientWidth);
+
+    // B8.2: Continue measuring with ResizeObserver
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         setContainerWidth(entry.contentRect.width);
@@ -378,14 +384,19 @@ function JustifiedRows({ photos, onPhotoClick }: {
             {row.map((photo) => {
               const [w, h] = getAspect(photo);
               const aspect = w / h;
-              const flexGrow = aspect / totalAspect * row.length;
+              
+              // B12.62: For last row, use explicit width instead of flex-grow
+              // For other rows, use flex-grow to fill width
+              const style = isLastRow 
+                ? { width: aspect * rowHeight, flexShrink: 0 }
+                : { flexGrow: aspect / totalAspect * row.length, flexBasis: 0 };
               
               return (
                 <button
                   key={photo.id}
                   onClick={() => onPhotoClick(photo)}
                   className="relative overflow-hidden bg-surface cursor-pointer group focus-visible:outline-brass focus-visible:outline-2 focus-visible:outline-offset-2"
-                  style={{ flexGrow, flexBasis: 0 }}
+                  style={style}
                   aria-label={`View: ${photo.alt}`}
                 >
                   {/* B8.6 & B8.7: Thumbnails with srcset, async decoding, transform-only transition */}

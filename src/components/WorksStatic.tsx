@@ -5,7 +5,7 @@ import { useScrollReveal } from '../lib/useScrollReveal';
 // App decides which component to show (Stage or WorksStatic)
 export default function WorksStatic() {
   return (
-    <section id="work" className="bg-stage" aria-label="Our work">
+    <section id="work" className="bg-stage" aria-label="Our work" data-mode="static">
       {chapters.map((chapter, i) => (
         <StaticChapter key={chapter} chapter={chapter} index={i} />
       ))}
@@ -50,14 +50,17 @@ function StaticChapter({ chapter, index }: { chapter: Chapter; index: number }) 
                 className="reveal"
                 style={{ transitionDelay: `${(i % 3) * 0.1}s` }}
               >
-                {/* B9.9: Constrain portrait photos */}
+                {/* B9.9 & B12.64: Constrain portrait photos by width, not height */}
                 <div
-                  className={`relative overflow-hidden bg-stage ${
+                  className={`relative bg-stage ${
                     isOffset && !isPortrait ? 'md:ml-[12%]' : ''
                   } ${isNarrow && !isPortrait ? 'md:max-w-[75%]' : ''} ${
                     isPortrait ? 'md:max-w-[50%] mx-auto md:mx-0' : ''
                   }`}
-                  style={isPortrait ? { maxHeight: '85svh' } : undefined}
+                  style={isPortrait ? { 
+                    // B12.64: Constrain width based on aspect ratio and 85svh height
+                    maxWidth: `min(50%, calc(85svh * ${w / h}))`
+                  } : undefined}
                 >
                   {/* B9.11: Responsive images with srcset */}
                   <img

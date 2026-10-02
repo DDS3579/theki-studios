@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { socialLinks, copy } from '../content';
 import { lockScroll, unlockScroll } from '../lib/scrollLock';
+import { scrollToChapter, scrollToSection, scrollToTop } from '../lib/scrollTo';
 
 export default function Header() {
   const [scrolled, setScrolled] = useState(false);
@@ -9,6 +10,9 @@ export default function Header() {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
 
+  // B12.51: Track intersection state for each section separately
+  const sectionStates = useRef<Map<Element, boolean>>(new Map());
+
   // B6.1: Cache elements and use IntersectionObserver
   useEffect(() => {
     const heroSection = document.querySelector('section[aria-label="Introduction"]');
@@ -16,11 +20,16 @@ export default function Header() {
     
     if (!heroSection || !workSection) return;
 
-    // B6.2: Three-state header using IntersectionObserver
+    // B12.52: Re-attach when elements change
     const observer = new IntersectionObserver(
       (entries) => {
-        // Check if either dark section is intersecting with header area
-        const isOverDark = entries.some(entry => entry.isIntersecting);
+        // B12.51: Update state for each entry
+        entries.forEach(entry => {
+          sectionStates.current.set(entry.target, entry.isIntersecting);
+        });
+        
+        // B12.51: Compute overDark from all tracked sections
+        const isOverDark = Array.from(sectionStates.current.values()).some(state => state);
         setOverDarkSection(isOverDark);
       },
       {
@@ -107,39 +116,67 @@ export default function Header() {
             {/* Wordmark */}
             <a
               href="#top"
-              className={`font-display text-lg md:text-xl font-bold uppercase tracking-tight transition-colors duration-300 ${
-                scrolled ? 'text-ink' : textColor
-              }`}
+              onClick={(e) => {
+                e.preventDefault();
+                scrollToTop(true);
+              }}
+              className={`font-display text-lg md:text-xl font-bold uppercase tracking-tight transition-colors duration-300 ${textColor}`}
             >
               {copy.studioName}
             </a>
 
             {/* Desktop nav */}
             <nav className="hidden md:flex items-center gap-8" aria-label="Main navigation">
-              {[
-                { href: '#work', label: 'Work' },
-                { href: '#archive', label: 'Archive' },
-                { href: '#services', label: 'Services' },
-                { href: '#contact', label: 'Contact' },
-              ].map(link => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  className={`font-sans text-sm transition-colors duration-200 hover:text-brass ${
-                    scrolled ? 'text-ink' : textColor
-                  }`}
-                >
-                  {link.label}
-                </a>
-              ))}
+              <a
+                href="#work"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToChapter('weddings');
+                }}
+                className={`font-sans text-sm transition-colors duration-200 hover:text-brass ${textColor}`}
+              >
+                Work
+              </a>
+              <a
+                href="#archive"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToSection('archive');
+                }}
+                className={`font-sans text-sm transition-colors duration-200 hover:text-brass ${textColor}`}
+              >
+                Archive
+              </a>
+              <a
+                href="#services"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToSection('services');
+                }}
+                className={`font-sans text-sm transition-colors duration-200 hover:text-brass ${textColor}`}
+              >
+                Services
+              </a>
               <a
                 href="#contact"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToSection('contact');
+                }}
+                className={`font-sans text-sm transition-colors duration-200 hover:text-brass ${textColor}`}
+              >
+                Contact
+              </a>
+              <a
+                href="#contact"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToSection('contact');
+                }}
                 className={`font-sans text-sm border px-5 py-2.5 transition-colors duration-200 ${
-                  scrolled
-                    ? 'border-ink/20 text-ink hover:border-brass hover:text-brass'
-                    : overDarkSection
-                      ? 'border-stage-text/30 text-stage-text hover:border-brass hover:text-brass'
-                      : 'border-ink/20 text-ink hover:border-brass hover:text-brass'
+                  overDarkSection
+                    ? 'border-stage-text/30 text-stage-text hover:border-brass hover:text-brass'
+                    : 'border-ink/20 text-ink hover:border-brass hover:text-brass'
                 }`}
               >
                 Enquire
@@ -194,37 +231,59 @@ export default function Header() {
             </button>
           </div>
           <nav className="flex flex-col gap-8" aria-label="Mobile navigation">
-            {[
-              { href: '#work', label: 'Work' },
-              { href: '#archive', label: 'Archive' },
-              { href: '#services', label: 'Services' },
-              { href: '#contact', label: 'Contact' },
-            ].map(link => (
-              <a
-                key={link.href}
-                href={link.href}
-                onClick={(e) => {
-                  // B6.10: Release lock first, then scroll
-                  e.preventDefault();
-                  setMenuOpen(false);
-                  // Small delay to ensure menu closes and lock releases
-                  setTimeout(() => {
-                    const target = document.querySelector(link.href);
-                    if (target) {
-                      target.scrollIntoView({ behavior: 'smooth' });
-                    }
-                  }, 50);
-                }}
-                className="font-display text-4xl font-bold uppercase tracking-tight text-ink hover:text-brass transition-colors"
-              >
-                {link.label}
-              </a>
-            ))}
+            <a
+              href="#work"
+              onClick={(e) => {
+                e.preventDefault();
+                setMenuOpen(false);
+                setTimeout(() => scrollToChapter('weddings'), 50);
+              }}
+              className="font-display text-4xl font-bold uppercase tracking-tight text-ink hover:text-brass transition-colors"
+            >
+              Work
+            </a>
+            <a
+              href="#archive"
+              onClick={(e) => {
+                e.preventDefault();
+                setMenuOpen(false);
+                setTimeout(() => scrollToSection('archive'), 50);
+              }}
+              className="font-display text-4xl font-bold uppercase tracking-tight text-ink hover:text-brass transition-colors"
+            >
+              Archive
+            </a>
+            <a
+              href="#services"
+              onClick={(e) => {
+                e.preventDefault();
+                setMenuOpen(false);
+                setTimeout(() => scrollToSection('services'), 50);
+              }}
+              className="font-display text-4xl font-bold uppercase tracking-tight text-ink hover:text-brass transition-colors"
+            >
+              Services
+            </a>
+            <a
+              href="#contact"
+              onClick={(e) => {
+                e.preventDefault();
+                setMenuOpen(false);
+                setTimeout(() => scrollToSection('contact'), 50);
+              }}
+              className="font-display text-4xl font-bold uppercase tracking-tight text-ink hover:text-brass transition-colors"
+            >
+              Contact
+            </a>
           </nav>
           <div className="mt-auto pt-8 border-t border-border">
             <a
               href="#contact"
-              onClick={() => setMenuOpen(false)}
+              onClick={(e) => {
+                e.preventDefault();
+                setMenuOpen(false);
+                setTimeout(() => scrollToSection('contact'), 50);
+              }}
               className="inline-block font-sans text-sm border border-ink/20 text-ink px-6 py-3 hover:border-brass hover:text-brass transition-colors"
             >
               Enquire

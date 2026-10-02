@@ -225,7 +225,7 @@ export const photos: Photo[] = [
     hero: true,
     width: 1600,
     height: 2400,
-    widths: ALL_WIDTHS,
+    widths: [800, 1600], // B12.65: Portrait files only have 800 and 1600 widths
     capture: { focal: '85 mm', aperture: 'f/2.0', shutter: '1/125', iso: '100' },
   },
   {
@@ -249,7 +249,7 @@ export const photos: Photo[] = [
     order: 3,
     width: 1600,
     height: 2400,
-    widths: ALL_WIDTHS,
+    widths: [800, 1600], // B12.65: Portrait files only have 800 and 1600 widths
     capture: { focal: '85 mm', aperture: 'f/2.8', shutter: '1/125', iso: '100' },
   },
 ];

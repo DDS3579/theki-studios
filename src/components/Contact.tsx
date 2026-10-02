@@ -33,12 +33,14 @@ export default function Contact() {
     } else {
       // B9.3: Validate email or phone format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const phoneRegex = /^[\d\s\-\+\(\)]{7,}$/;
+      // B12.66: Phone validation - require at least 7 digits
+      const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+      const digitCount = (emailOrPhone.match(/\d/g) || []).length;
       const isEmail = emailRegex.test(emailOrPhone);
-      const isPhone = phoneRegex.test(emailOrPhone);
+      const isPhone = phoneRegex.test(emailOrPhone) && digitCount >= 7;
       
       if (!isEmail && !isPhone) {
-        errs.emailOrPhone = 'Please enter a valid email or phone number.';
+        errs.emailOrPhone = 'Please enter a valid email or phone number (at least 7 digits for phone).';
       } else if (emailOrPhone.length > 100) {
         errs.emailOrPhone = 'Contact info is too long.';
       }
@@ -323,10 +325,9 @@ export default function Contact() {
                     name="emailOrPhone"
                     required
                     maxLength={100}
-                    // B9.3: Input mode for mobile keyboard
-                    inputMode="email"
+                    // B12.66: Removed inputMode="email" to allow phone number entry
                     // B9.3: Autofill hints
-                    autoComplete="email"
+                    autoComplete="email tel"
                     className="w-full bg-paper border border-border px-4 py-3 font-sans text-ink text-base focus:border-brass focus:outline-none transition-colors"
                     aria-describedby={errors.emailOrPhone ? 'email-error' : undefined}
                     aria-invalid={hasSubmitted && !!errors.emailOrPhone}
