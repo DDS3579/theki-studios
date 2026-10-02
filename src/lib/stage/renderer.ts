@@ -1,10 +1,19 @@
-// WebGL2 Renderer for the Pull Focus stage
-// B4: Performance and robustness optimizations
-
+// WebGL2 Renderer - new opacity/blur formulas
 import type { CameraState } from './camera';
 import type { RenderTier } from '../gate';
+import type { PlaneLayout } from './layout';
+import {
+  PLANE_SPACING,
+  CULL_DISTANCE,
+  BLUR_DIVISOR,
+  BLUR_PASSED_MULTIPLIER,
+  FADE_START,
+  FADE_END,
+  PASSED_FADE_RATE,
+  PASSED_FADE_END,
+  STAGE_FOV,
+} from './constants';
 
-// B4.6: Simplified shader without sRGB conversions
 const VERTEX_SHADER = `#version 300 es
 precision highp float;
 
@@ -39,11 +48,9 @@ uniform float u_maxBlurLod;
 out vec4 fragColor;
 
 void main() {
-  // B4.7: Cap blur at 3 to avoid blocky mip levels
   float lodBias = u_enableBlur ? min(u_blur * u_maxBlurLod, 3.0) : 0.0;
   vec4 texColor = texture(u_texture, v_uv, lodBias);
   
-  // B4.6: Apply vignette directly without sRGB conversions
   vec2 uv = v_uv - 0.5;
   float vig = 1.0 - dot(uv, uv) * u_vignette * 2.0;
   
@@ -55,71 +62,60 @@ interface TextureEntry {
   texture: WebGLTexture;
   loaded: boolean;
   failed: boolean;
-  fadeProgress: number; // 0-1 for fade-in animation
+  fadeProgress: number;
 }
 
 export interface Plane {
   textureId: string;
-  depth: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  opacity: number;
+  index: number; // Photo index in chapter
+  layout: PlaneLayout;
 }
 
 export type RendererState = 'loading' | 'ready' | 'failed';
-
-export const STAGE_FOV = Math.PI / 3.5;
 
 export class StageRenderer {
   private gl: WebGL2RenderingContext | null = null;
   private canvas: HTMLCanvasElement;
   private program: WebGLProgram | null = null;
   private textures: Map<string, TextureEntry> = new Map();
-  private sortedPlanes: Plane[] = []; // B4.1: Pre-sorted cache
+  private sortedPlanes: Plane[] = [];
   private vao: WebGLVertexArrayObject | null = null;
-  private vbo: WebGLBuffer | null = null; // B4.10: Store buffers
+  private vbo: WebGLBuffer | null = null;
   private ibo: WebGLBuffer | null = null;
   private disposed = false;
   private _state: RendererState = 'loading';
 
-  // B4.1: Quality settings
   private enableBlur = true;
   private currentDpr = 1;
   private maxBlurLod = 5.0;
 
-  // B4.1: Preallocated matrices
   private projectionMatrix = new Float32Array(16);
   private viewMatrix = new Float32Array(16);
   private modelMatrix = new Float32Array(16);
   private tempMatrix1 = new Float32Array(16);
   private tempMatrix2 = new Float32Array(16);
 
-  // B4.1: Cached projection
   private cachedAspect = 0;
   private projectionDirty = true;
 
-  // B4.2: Dirty flag
   private dirty = true;
   private lastCamera: CameraState | null = null;
+  private lastFocus = 0;
+  private lastGroupOpacity = 1;
 
-  // B4.3: ResizeObserver and cached size
   private resizeObserver: ResizeObserver | null = null;
   private cachedWidth = 0;
   private cachedHeight = 0;
 
-  // B4.4: Texture loading queue
   private textureLoadQueue: Array<{ id: string; url: string; priority: number }> = [];
   private activeTextureLoads = 0;
   private maxConcurrentLoads = 2;
 
-  // B4.5: Abort controllers for texture loads
   private abortControllers: Map<string, AbortController> = new Map();
   private failedTextureCount = 0;
   private onTooManyFailures?: () => void;
+  private onFirstTextureReady?: () => void;
 
-  // Uniform locations
   private uProjection: WebGLUniformLocation | null = null;
   private uView: WebGLUniformLocation | null = null;
   private uModel: WebGLUniformLocation | null = null;
@@ -141,7 +137,6 @@ export class StageRenderer {
     this.setupResizeObserver();
   }
 
-  // B4.3: ResizeObserver for efficient size updates
   private setupResizeObserver() {
     this.resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -159,7 +154,6 @@ export class StageRenderer {
 
   private init(tier: RenderTier) {
     try {
-      // B4.9: alpha: false, power preference only on A0
       const gl = this.canvas.getContext('webgl2', {
         alpha: false,
         antialias: false,
@@ -172,7 +166,6 @@ export class StageRenderer {
       }
       this.gl = gl;
 
-      // B4.8: Context loss handling
       this.canvas.addEventListener('webglcontextlost', this.handleContextLost);
       this.canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
 
@@ -194,7 +187,6 @@ export class StageRenderer {
       this.uEnableBlur = gl.getUniformLocation(this.program, 'u_enableBlur');
       this.uMaxBlurLod = gl.getUniformLocation(this.program, 'u_maxBlurLod');
 
-      // B4.6: Set constant uniforms once
       gl.uniform1i(this.uTexture, 0);
       gl.uniform1f(this.uVignette, 0.12);
 
@@ -213,13 +205,11 @@ export class StageRenderer {
 
   private handleContextLost = (e: Event) => {
     e.preventDefault();
-    console.warn('WebGL context lost');
     this._state = 'failed';
     this.gl = null;
   };
 
   private handleContextRestored = () => {
-    console.log('WebGL context restored, reinitializing');
     this.init('A0');
   };
 
@@ -246,14 +236,20 @@ export class StageRenderer {
     };
   }
 
-  // B4.2: Mark renderer as dirty
   markDirty() {
     this.dirty = true;
   }
 
-  // B4.5: Set callback for too many texture failures
   setOnTooManyFailures(callback: () => void) {
     this.onTooManyFailures = callback;
+  }
+
+  setOnFirstTextureReady(callback: () => void) {
+    this.onFirstTextureReady = callback;
+  }
+
+  isTextureLoading(): boolean {
+    return this.activeTextureLoads > 0;
   }
 
   private createShader(type: number, source: string): WebGLShader | null {
@@ -266,7 +262,6 @@ export class StageRenderer {
     gl.compileShader(shader);
 
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      console.error('Shader error:', gl.getShaderInfoLog(shader));
       gl.deleteShader(shader);
       return null;
     }
@@ -289,7 +284,6 @@ export class StageRenderer {
     gl.linkProgram(program);
 
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.error('Link error:', gl.getProgramInfoLog(program));
       return null;
     }
 
@@ -333,14 +327,12 @@ export class StageRenderer {
     gl.bindVertexArray(null);
   }
 
-  // B4.4: Queue texture loads with priority
   queueTextureLoad(id: string, url: string, priority: number = 0) {
     this.textureLoadQueue.push({ id, url, priority });
     this.textureLoadQueue.sort((a, b) => a.priority - b.priority);
     this.processTextureQueue();
   }
 
-  // B4.4: Process texture load queue
   private processTextureQueue() {
     while (
       this.activeTextureLoads < this.maxConcurrentLoads &&
@@ -349,7 +341,7 @@ export class StageRenderer {
       const item = this.textureLoadQueue.shift();
       if (item) {
         this.activeTextureLoads++;
-        this.loadTexture(item.id, item.url).finally(() => {
+        this.loadTexture(item.id, item.url, item.priority === 0).finally(() => {
           this.activeTextureLoads--;
           this.processTextureQueue();
         });
@@ -357,15 +349,13 @@ export class StageRenderer {
     }
   }
 
-  // B4.4 & B4.5: Enhanced texture loading with error handling
-  async loadTexture(id: string, url: string): Promise<void> {
+  private async loadTexture(id: string, url: string, isFirst: boolean): Promise<void> {
     if (!this.gl || this.disposed) return;
     const gl = this.gl;
 
     const texture = gl.createTexture();
     if (!texture) return;
 
-    // Initialize as not loaded
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
       new Uint8Array([56, 42, 30, 255]));
@@ -376,7 +366,6 @@ export class StageRenderer {
 
     this.textures.set(id, { texture, loaded: false, failed: false, fadeProgress: 0 });
 
-    // B4.5: Create abort controller
     const abortController = new AbortController();
     this.abortControllers.set(id, abortController);
 
@@ -385,7 +374,6 @@ export class StageRenderer {
 
     while (retryCount <= maxRetries) {
       try {
-        // B4.5: Check response status with timeout
         const response = await Promise.race([
           fetch(url, { signal: abortController.signal }),
           new Promise<Response>((_, reject) =>
@@ -404,7 +392,6 @@ export class StageRenderer {
           return;
         }
 
-        // B4.4: Decode at capped size
         const bitmap = await createImageBitmap(blob, {
           colorSpaceConversion: 'none',
           resizeWidth: 2048,
@@ -426,18 +413,22 @@ export class StageRenderer {
         const entry = this.textures.get(id);
         if (entry) {
           entry.loaded = true;
-          entry.fadeProgress = 0; // Start fade-in
+          entry.fadeProgress = 0;
         }
 
         this.abortControllers.delete(id);
         this.markDirty();
+
+        // Notify when first texture is ready
+        if (isFirst && this.onFirstTextureReady) {
+          this.onFirstTextureReady();
+        }
+
         return;
       } catch (err) {
         if (retryCount < maxRetries) {
           retryCount++;
-          console.warn(`Texture load failed, retrying (${retryCount}/${maxRetries}):`, id, err);
         } else {
-          console.error('Texture load failed after retries:', id, err);
           const entry = this.textures.get(id);
           if (entry) {
             entry.failed = true;
@@ -445,8 +436,12 @@ export class StageRenderer {
           this.failedTextureCount++;
           this.abortControllers.delete(id);
 
-          // B4.5: Notify if too many failures
           if (this.failedTextureCount > 3 && this.onTooManyFailures) {
+            this.onTooManyFailures();
+          }
+
+          // If first texture failed, notify
+          if (isFirst && this.onTooManyFailures) {
             this.onTooManyFailures();
           }
           return;
@@ -456,39 +451,38 @@ export class StageRenderer {
   }
 
   setPlanes(planes: Plane[]) {
-    // B4.1: Sort once (depth order is static)
-    this.sortedPlanes = [...planes].sort((a, b) => b.depth - a.depth);
+    this.sortedPlanes = [...planes].sort((a, b) => b.index - a.index);
     this.markDirty();
   }
 
-  // B4.2: Render only when dirty
   render(
     camera: CameraState,
-    focusDepth: number,
-    planeSpacing: number = 2.5,
-    dt: number = 0.016
+    focus: number,
+    groupOpacity: number
   ): number {
     if (!this.gl || !this.program || !this.vao || this.disposed) return 0;
 
-    // B4.2: Check if anything changed
     const cameraChanged = !this.lastCamera ||
       this.lastCamera.x !== camera.x ||
       this.lastCamera.y !== camera.y ||
       this.lastCamera.z !== camera.z ||
-      this.lastCamera.yaw !== camera.yaw ||
-      this.lastCamera.pitch !== camera.pitch;
+      this.lastCamera.yaw !== camera.yaw;
 
-    if (!this.dirty && !cameraChanged) {
-      return 0; // Skip render
+    const focusChanged = this.lastFocus !== focus;
+    const opacityChanged = this.lastGroupOpacity !== groupOpacity;
+
+    if (!this.dirty && !cameraChanged && !focusChanged && !opacityChanged) {
+      return 0;
     }
 
     this.lastCamera = { ...camera };
+    this.lastFocus = focus;
+    this.lastGroupOpacity = groupOpacity;
     this.dirty = false;
 
     const gl = this.gl;
     const startTime = performance.now();
 
-    // B4.3: Use cached size
     const dpr = this.currentDpr;
     const w = Math.floor(this.cachedWidth * dpr);
     const h = Math.floor(this.cachedHeight * dpr);
@@ -506,7 +500,6 @@ export class StageRenderer {
     const aspect = w / h;
     this.lastAspect = aspect;
 
-    // B4.1: Cache projection matrix
     if (this.projectionDirty || aspect !== this.cachedAspect) {
       this.perspective(STAGE_FOV, aspect, 0.1, 100, this.projectionMatrix);
       this.cachedAspect = aspect;
@@ -515,46 +508,80 @@ export class StageRenderer {
     }
     gl.uniformMatrix4fv(this.uProjection, false, this.projectionMatrix);
 
-    // B4.1: Reuse view matrix buffer
     this.buildView(camera, this.viewMatrix);
     this.lastView = this.viewMatrix;
     gl.uniformMatrix4fv(this.uView, false, this.viewMatrix);
 
-    // B4.6: Set blur parameters once
     gl.uniform1i(this.uEnableBlur, this.enableBlur ? 1 : 0);
     gl.uniform1f(this.uMaxBlurLod, this.maxBlurLod);
 
     gl.bindVertexArray(this.vao);
 
-    // B4.1: Use pre-sorted planes
     for (const plane of this.sortedPlanes) {
-      // B4.5: Skip failed textures
       const entry = this.textures.get(plane.textureId);
       if (!entry || entry.failed) continue;
 
-      // B4.4: Fade in loaded textures
       if (entry.loaded && entry.fadeProgress < 1) {
-        entry.fadeProgress = Math.min(1, entry.fadeProgress + dt * 2);
-        this.dirty = true; // Keep rendering during fade
+        entry.fadeProgress = Math.min(1, entry.fadeProgress + 0.016 * 2);
+        this.dirty = true;
       }
 
-      // Skip invisible planes
-      if (plane.opacity < 0.01 && entry.fadeProgress < 1) continue;
+      // Compute distance from camera to photo
+      const photoZ = -plane.index * PLANE_SPACING;
+      const distance = camera.z - photoZ;
 
-      const planeZ = plane.depth * planeSpacing;
-      const viewDistance = camera.z - planeZ;
-      if (viewDistance < 0.1) continue;
+      // Cull if too close
+      if (distance < CULL_DISTANCE) continue;
 
-      // B4.1: Reuse model matrix buffer
-      this.buildModel(plane.x, plane.y, planeZ, plane.width, plane.height, this.modelMatrix);
-      gl.uniformMatrix4fv(this.uModel, false, this.modelMatrix);
+      // Compute s = photo index - focus
+      const s = plane.index - focus;
+
+      // Compute opacity
+      let opacity: number;
+      if (s >= 0) {
+        // Ahead of focus
+        if (s <= FADE_START) {
+          opacity = 1;
+        } else if (s >= FADE_END) {
+          opacity = 0;
+        } else {
+          opacity = 1 - (s - FADE_START) / (FADE_END - FADE_START);
+        }
+      } else {
+        // Behind focus (passed)
+        opacity = Math.max(0, 1 + PASSED_FADE_RATE * s);
+        if (s < PASSED_FADE_END) {
+          opacity = 0;
+        }
+      }
+
+      // Apply group opacity
+      opacity *= groupOpacity;
+
+      // Apply texture fade
+      opacity *= entry.fadeProgress;
+
+      if (opacity < 0.01) continue;
 
       // Compute blur
-      const blur = Math.abs(plane.depth - focusDepth) / 1.5;
-      gl.uniform1f(this.uBlur, blur);
+      const absS = Math.abs(s);
+      let blur = absS / BLUR_DIVISOR;
+      if (s < 0) {
+        blur *= BLUR_PASSED_MULTIPLIER;
+      }
 
-      // B4.4: Apply fade progress to opacity
-      const opacity = plane.opacity * entry.fadeProgress;
+      // Build model matrix
+      this.buildModel(
+        plane.layout.x,
+        plane.layout.y,
+        photoZ,
+        plane.layout.width,
+        plane.layout.height,
+        this.modelMatrix
+      );
+      gl.uniformMatrix4fv(this.uModel, false, this.modelMatrix);
+
+      gl.uniform1f(this.uBlur, blur);
       gl.uniform1f(this.uOpacity, opacity);
 
       gl.activeTexture(gl.TEXTURE0);
@@ -570,14 +597,12 @@ export class StageRenderer {
     return frameTime;
   }
 
-  // B4.1: Build view matrix into preallocated buffer
   private buildView(camera: CameraState, out: Float32Array) {
     const cy = Math.cos(-camera.yaw);
     const sy = Math.sin(-camera.yaw);
     const cp = Math.cos(-camera.pitch);
     const sp = Math.sin(-camera.pitch);
 
-    // Rotation around Y
     this.tempMatrix1.set([
       cy, 0, -sy, 0,
       0, 1, 0, 0,
@@ -585,7 +610,6 @@ export class StageRenderer {
       0, 0, 0, 1,
     ]);
 
-    // Rotation around X
     this.tempMatrix2.set([
       1, 0, 0, 0,
       0, cp, sp, 0,
@@ -593,8 +617,7 @@ export class StageRenderer {
       0, 0, 0, 1,
     ]);
 
-    // Translation
-    const t: Float32Array = this.tempMatrix1; // Reuse buffer
+    const t: Float32Array = this.tempMatrix1;
     t.set([
       1, 0, 0, 0,
       0, 1, 0, 0,
@@ -602,12 +625,10 @@ export class StageRenderer {
       -camera.x, -camera.y, -camera.z, 1,
     ]);
 
-    // View = Rx * Ry * T
     this.mul4Into(this.tempMatrix2, t, this.tempMatrix1);
     this.mul4Into(this.tempMatrix1, this.tempMatrix2, out);
   }
 
-  // B4.1: Build model matrix into preallocated buffer
   private buildModel(
     px: number, py: number, pz: number,
     sx: number, sy: number,
@@ -617,11 +638,10 @@ export class StageRenderer {
       sx, 0, 0, 0,
       0, sy, 0, 0,
       0, 0, 1, 0,
-      px, py, -pz, 1,
+      px, py, pz, 1,
     ]);
   }
 
-  // B4.1: Build perspective into preallocated buffer
   private perspective(fov: number, aspect: number, near: number, far: number, out: Float32Array) {
     const f = 1.0 / Math.tan(fov / 2);
     const rangeInv = 1 / (near - far);
@@ -633,7 +653,6 @@ export class StageRenderer {
     ]);
   }
 
-  // B4.1: Matrix multiplication into preallocated buffer
   private mul4Into(a: Float32Array, b: Float32Array, out: Float32Array) {
     for (let i = 0; i < 4; i++) {
       for (let j = 0; j < 4; j++) {
@@ -650,17 +669,14 @@ export class StageRenderer {
     return this.textures.get(id)?.loaded ?? false;
   }
 
-  // B4.10: Complete cleanup
   dispose() {
     this.disposed = true;
 
-    // Cancel all pending texture loads
     for (const controller of this.abortControllers.values()) {
       controller.abort();
     }
     this.abortControllers.clear();
 
-    // Disconnect resize observer
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
@@ -674,19 +690,16 @@ export class StageRenderer {
     if (!this.gl) return;
     const gl = this.gl;
 
-    // Delete textures
     for (const entry of this.textures.values()) {
       gl.deleteTexture(entry.texture);
     }
     this.textures.clear();
 
-    // B4.10: Delete buffers
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.ibo) gl.deleteBuffer(this.ibo);
     if (this.vao) gl.deleteVertexArray(this.vao);
     if (this.program) gl.deleteProgram(this.program);
 
-    // Release context
     const ext = gl.getExtension('WEBGL_lose_context');
     if (ext) {
       ext.loseContext();

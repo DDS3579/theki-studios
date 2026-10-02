@@ -1,114 +1,124 @@
-// Layout: plane sizing in world units, matching the 3D camera
-// B3.5: Layout uses world units based on camera's visible area
-// B3.6: Prevents overflow and overlap
+// Layout system - compute photo sizes at FOCUS_DISTANCE
+import {
+  FOCUS_DISTANCE,
+  STAGE_FOV,
+  LANDSCAPE_MIN_ASPECT,
+  LANDSCAPE_MAX_HEIGHT,
+  LANDSCAPE_MAX_WIDTH,
+  PORTRAIT_MAX_HEIGHT,
+  PORTRAIT_MAX_WIDTH,
+  PORTRAIT_SIDE_OFFSET,
+} from './constants';
 
-export interface PlaneRect {
-  x: number; // World X position
-  y: number; // World Y position
+export interface PlaneLayout {
+  x: number; // World x position
+  y: number; // World y position (always 0)
   width: number; // World width
   height: number; // World height
-  side: 'left' | 'right' | 'center';
 }
 
-
-
-// Helper function to compute visible area at a given distance from camera
-function getVisibleArea(
-  distance: number,
-  fov: number, // Vertical FOV in radians
-  aspect: number // Screen aspect ratio (width/height)
-): { width: number; height: number } {
+// Compute visible area at a given distance
+function getVisibleArea(distance: number, fov: number, aspect: number) {
   const height = 2 * distance * Math.tan(fov / 2);
   const width = height * aspect;
   return { width, height };
 }
 
-// B3.5 & B3.6: Compute plane rect in world units
-export function computePlaneRect(
-  photoAspect: number, // width / height of the photo
-  distance: number, // Distance from camera to plane
-  fov: number, // Vertical FOV in radians
-  screenAspect: number, // Screen aspect ratio
-  frameIndex: number,
-  _totalFrames: number
-): PlaneRect {
-  const visible = getVisibleArea(distance, fov, screenAspect);
+// Compute layout for all photos in a chapter
+// Called once per chapter and on resize, not per frame
+export function computeChapterLayout(
+  photoAspects: number[], // width/height for each photo
+  screenAspect: number
+): PlaneLayout[] {
+  // Compute visible area at FOCUS_DISTANCE
+  const visible = getVisibleArea(FOCUS_DISTANCE, STAGE_FOV, screenAspect);
   
-  // B3.6: Limit photo size to prevent overflow
-  // Max height: 70% of visible height (leaves margin)
-  // Max width: 42% of visible width (prevents overlap when alternating sides)
-  const maxHeightRatio = 0.70;
-  const maxWidthRatio = 0.42;
-  
-  let height = visible.height * maxHeightRatio;
-  let width = height * photoAspect;
-  
-  // If width exceeds limit, constrain by width instead
-  if (width > visible.width * maxWidthRatio) {
-    width = visible.width * maxWidthRatio;
-    height = width / photoAspect;
-  }
-  
-  // B3.6: Position based on aspect ratio
-  // Landscape photos (wide): center them
-  // Portrait photos (tall): alternate sides
-  let x: number;
-  let side: 'left' | 'right' | 'center';
-  
-  if (photoAspect > 1.2) {
-    // Landscape: center the photo
-    x = 0;
-    side = 'center';
-  } else {
-    // Portrait or square: alternate sides
-    side = frameIndex % 2 === 0 ? 'left' : 'right';
-    const xOffset = visible.width * 0.25; // 25% from center
-    x = side === 'left' ? -xOffset : xOffset;
-  }
-  
-  const y = 0; // Center vertically
-  
-  return { x, y, width, height, side };
+  return photoAspects.map((photoAspect, i) => {
+    let width: number;
+    let height: number;
+    let x: number;
+    
+    if (photoAspect >= LANDSCAPE_MIN_ASPECT) {
+      // Landscape: centered
+      height = visible.height * LANDSCAPE_MAX_HEIGHT;
+      width = height * photoAspect;
+      
+      // Constrain width
+      if (width > visible.width * LANDSCAPE_MAX_WIDTH) {
+        width = visible.width * LANDSCAPE_MAX_WIDTH;
+        height = width / photoAspect;
+      }
+      
+      x = 0;
+    } else {
+      // Portrait or square: alternate sides
+      height = visible.height * PORTRAIT_MAX_HEIGHT;
+      width = height * photoAspect;
+      
+      // Constrain width
+      if (width > visible.width * PORTRAIT_MAX_WIDTH) {
+        width = visible.width * PORTRAIT_MAX_WIDTH;
+        height = width / photoAspect;
+      }
+      
+      // Alternate sides
+      const side = i % 2 === 0 ? -1 : 1;
+      x = side * visible.width * PORTRAIT_SIDE_OFFSET;
+    }
+    
+    return {
+      x,
+      y: 0,
+      width,
+      height,
+    };
+  });
 }
 
-// B3.7: Project plane corners to screen coordinates
+// Project a plane's corners to screen coordinates
+// Used for viewfinder marks
 export function projectPlaneToScreen(
-  planeRect: PlaneRect,
-  cameraZ: number, // Camera distance from origin
-  planeZ: number, // Plane distance from origin
-  fov: number,
-  screenAspect: number,
+  layout: PlaneLayout,
+  cameraX: number,
+  cameraY: number,
+  cameraZ: number,
+  cameraYaw: number,
+  photoZ: number, // World z of the photo (negative)
   screenWidth: number,
   screenHeight: number
 ): { left: number; top: number; width: number; height: number } {
-  // Distance from camera to plane
-  const distance = cameraZ - planeZ;
-  if (distance <= 0) {
-    // Plane is behind or at camera, return zero rect
+  // Distance from camera to photo
+  const distance = cameraZ - photoZ;
+  if (distance <= 0.1) {
     return { left: 0, top: 0, width: 0, height: 0 };
   }
   
   // Visible area at this distance
-  const visible = getVisibleArea(distance, fov, screenAspect);
+  const visible = getVisibleArea(distance, STAGE_FOV, screenWidth / screenHeight);
   
   // Convert world units to screen pixels
   const worldToScreenX = screenWidth / visible.width;
   const worldToScreenY = screenHeight / visible.height;
   
-  // Plane center in world units
-  const centerX = planeRect.x;
-  const centerY = planeRect.y;
+  // Account for camera offset and yaw
+  const cos = Math.cos(cameraYaw);
+  const sin = Math.sin(cameraYaw);
   
-  // Plane size in world units
-  const planeWidth = planeRect.width;
-  const planeHeight = planeRect.height;
+  // Plane center relative to camera
+  const relX = layout.x - cameraX;
+  const relY = layout.y - cameraY;
+  
+  // Apply yaw rotation
+  const rotatedX = relX * cos - relY * sin;
+  const rotatedY = relX * sin + relY * cos;
   
   // Convert to screen coordinates
-  const screenCenterX = screenWidth / 2 + centerX * worldToScreenX;
-  const screenCenterY = screenHeight / 2 - centerY * worldToScreenY; // Y is flipped
+  const screenCenterX = screenWidth / 2 + rotatedX * worldToScreenX;
+  const screenCenterY = screenHeight / 2 - rotatedY * worldToScreenY;
   
-  const screenW = planeWidth * worldToScreenX;
-  const screenH = planeHeight * worldToScreenY;
+  // Plane size in screen pixels (account for perspective)
+  const screenW = layout.width * worldToScreenX;
+  const screenH = layout.height * worldToScreenY;
   
   return {
     left: screenCenterX - screenW / 2,

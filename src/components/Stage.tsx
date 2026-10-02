@@ -1,15 +1,23 @@
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import { chapters, getFeaturedPhotos, copy, flags, getPhotoSrc, getAspect, type Chapter, type Photo } from '../content';
-import { buildJourney, getSegmentAt, getLocalProgress } from '../lib/stage/journey';
-import { computeFocusState, circleOfConfusion } from '../lib/stage/focus';
-import { createPointerParallax, setParallaxTarget, cameraFor } from '../lib/stage/camera';
-import { computePlaneRect, projectPlaneToScreen } from '../lib/stage/layout';
-import { StageRenderer, STAGE_FOV } from '../lib/stage/renderer';
+import { buildJourney, getSegmentAt, getLocalProgress, getChapterProgress } from '../lib/stage/journey';
+import { computeFocusFromSegment } from '../lib/stage/focus';
+import { createPointerParallax, setParallaxTarget, easeParallax, cameraFor } from '../lib/stage/camera';
+import { computeChapterLayout, projectPlaneToScreen, type PlaneLayout } from '../lib/stage/layout';
+import { StageRenderer, type Plane } from '../lib/stage/renderer';
 import { capabilityStore, RuntimeLadder } from '../lib/gate';
 import { ticker } from '../lib/ticker';
 import { lockScroll, unlockScroll } from '../lib/scrollLock';
+import {
+  PLANE_SPACING,
+  PROGRESS_EPSILON,
+  PARALLAX_EPSILON,
+  TITLE_FADE_IN_END,
+  TITLE_FADE_OUT_START,
+  GROUP_FADE_OUT_START,
+} from '../lib/stage/constants';
 
-// Memoized HUD components to prevent unnecessary re-renders
+// Memoized HUD components
 const FrameCounter = memo(({ chapter, frameIndex, totalFrames }: { chapter: Chapter; frameIndex: number; totalFrames: number }) => (
   <div className="absolute top-6 left-6 font-mono text-[11px] text-stage-muted tracking-[0.15em]">
     {chapter.toUpperCase()}{' '}
@@ -38,10 +46,12 @@ const CaptureSettings = memo(({ photo }: { photo: Photo | null }) => {
   );
 });
 
-const ChapterTitle = memo(({ chapter, opacity }: { chapter: Chapter; opacity: number }) => (
+// B12.4: Title card with ref-based opacity
+const ChapterTitle = memo(({ chapter, titleRef }: { chapter: Chapter; titleRef: React.RefObject<HTMLDivElement> }) => (
   <div 
-    className="absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300"
-    style={{ opacity }}
+    ref={titleRef}
+    className="absolute inset-0 flex items-center justify-center pointer-events-none"
+    style={{ opacity: 0 }}
   >
     <div className="text-center">
       <h2 className="title-card text-stage-text">
@@ -67,7 +77,6 @@ const LoadingIndicator = memo(() => (
   </div>
 ));
 
-// Scroll to chapter function
 function scrollToChapter(container: HTMLElement, chapter: Chapter, instant = false) {
   const journey = buildJourney();
   const chapterRange = journey.chapterRanges.find(r => r.chapter === chapter);
@@ -93,17 +102,22 @@ export default function Stage({ onFailure }: StageProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewfinderRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<StageRenderer | null>(null);
   const journeyRef = useRef(buildJourney());
   
-  // Refs for continuous values (B5.1)
+  // Refs for continuous values
   const progressRef = useRef(0);
   const targetProgressRef = useRef(0);
   const parallaxRef = useRef(createPointerParallax());
-  const focusDepthRef = useRef(0);
-  const blurRef = useRef(0);
+  const focusRef = useRef(0);
   
-  // Cached measurements (B5.6)
+  // B12.5: Cached chapter layout
+  const chapterLayoutRef = useRef<PlaneLayout[]>([]);
+  const chapterPlanesRef = useRef<Plane[]>([]);
+  const lastChapterRef = useRef<Chapter>('weddings');
+  
+  // Cached measurements
   const scrollMeasurementsRef = useRef({
     containerTop: 0,
     scrollableDistance: 0,
@@ -111,30 +125,30 @@ export default function Stage({ onFailure }: StageProps) {
     stageHeight: 0
   });
   
-  // State only for discrete values (B5.1)
+  // State only for discrete values
   const [currentChapter, setCurrentChapter] = useState<Chapter>('weddings');
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isTitleSegment, setIsTitleSegment] = useState(false);
   const [focusLocked, setFocusLocked] = useState(true);
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [titleOpacity, setTitleOpacity] = useState(0);
   
-  // B10.7: Live region for chapter announcements
+  // B12.7: Live region for announcements
   const [announcement, setAnnouncement] = useState('');
   const previousChapterRef = useRef<Chapter>('weddings');
+  const announcementTimeoutRef = useRef<number | null>(null);
   
   // Visibility and animation state
   const isVisibleRef = useRef(true);
   const ladderRef = useRef<RuntimeLadder | null>(null);
   const capsRef = useRef(capabilityStore.get());
+  const lastTickTimeRef = useRef(performance.now());
 
-  // Stable close handler for ContactSheet (B5.9)
   const closeContactSheet = useCallback(() => {
     setContactSheetOpen(false);
   }, []);
 
-  // Update scroll measurements (B5.6)
+  // B12.10: Update scroll measurements
   const updateScrollMeasurements = useCallback(() => {
     if (!containerRef.current || !stageRef.current) return;
     
@@ -149,7 +163,6 @@ export default function Stage({ onFailure }: StageProps) {
     };
   }, []);
 
-  // Compute progress from scroll position (B5.6)
   const updateProgressFromScroll = useCallback(() => {
     const { containerTop, scrollableDistance } = scrollMeasurementsRef.current;
     if (scrollableDistance <= 0) return;
@@ -160,7 +173,32 @@ export default function Stage({ onFailure }: StageProps) {
     targetProgressRef.current = progress;
   }, []);
 
-  // Initialize renderer and effects
+  // B12.5: Build chapter planes once
+  const buildChapterPlanes = useCallback((chapter: Chapter, stageWidth: number, stageHeight: number) => {
+    const chapterPhotos = getFeaturedPhotos(chapter);
+    const photoAspects = chapterPhotos.map(p => {
+      const [w, h] = getAspect(p);
+      return w / h;
+    });
+    
+    const screenAspect = stageWidth / stageHeight;
+    const layouts = computeChapterLayout(photoAspects, screenAspect);
+    
+    const planes: Plane[] = chapterPhotos.map((photo, i) => ({
+      textureId: photo.id,
+      index: i,
+      layout: layouts[i],
+    }));
+    
+    chapterLayoutRef.current = layouts;
+    chapterPlanesRef.current = planes;
+    
+    if (rendererRef.current) {
+      rendererRef.current.setPlanes(planes);
+    }
+  }, []);
+
+  // Initialize renderer
   useEffect(() => {
     if (!canvasRef.current || !stageRef.current) return;
     
@@ -180,12 +218,16 @@ export default function Stage({ onFailure }: StageProps) {
 
     renderer.setQuality(caps.tier, caps.dpr, caps.enableBlur);
 
-    // Set up failure callback
+    // B12.7: Callback when first texture is ready
+    renderer.setOnFirstTextureReady(() => {
+      setLoading(false);
+    });
+
     renderer.setOnTooManyFailures(() => {
       onFailure();
     });
 
-    // Queue texture loads with priority
+    // Queue texture loads
     chapters.forEach((chapter, chapterIndex) => {
       const chapterPhotos = getFeaturedPhotos(chapter);
       chapterPhotos.forEach(photo => {
@@ -196,18 +238,6 @@ export default function Stage({ onFailure }: StageProps) {
         );
       });
     });
-
-    // Check if first texture is loaded to hide loading indicator
-    const checkLoading = () => {
-      const firstChapter = chapters[0];
-      const firstPhoto = getFeaturedPhotos(firstChapter)[0];
-      if (firstPhoto && renderer.isTextureLoaded(firstPhoto.id)) {
-        setLoading(false);
-      } else {
-        setTimeout(checkLoading, 100);
-      }
-    };
-    checkLoading();
 
     // Initialize runtime ladder
     ladderRef.current = new RuntimeLadder(caps.tier, (newTier) => {
@@ -220,18 +250,23 @@ export default function Stage({ onFailure }: StageProps) {
       renderer.setQuality(newTier, newDpr, enableBlur);
     });
 
-    // Initial measurements
     updateScrollMeasurements();
     updateProgressFromScroll();
+
+    // B12.5: Build initial chapter planes
+    const { stageWidth, stageHeight } = scrollMeasurementsRef.current;
+    if (stageWidth > 0 && stageHeight > 0) {
+      buildChapterPlanes('weddings', stageWidth, stageHeight);
+    }
 
     return () => {
       renderer.dispose();
       rendererRef.current = null;
       ladderRef.current = null;
     };
-  }, [onFailure, updateScrollMeasurements, updateProgressFromScroll]);
+  }, [onFailure, updateScrollMeasurements, updateProgressFromScroll, buildChapterPlanes]);
 
-  // Subscribe to capability changes (B5.14)
+  // Subscribe to capability changes
   useEffect(() => {
     const unsubscribe = capabilityStore.subscribe((newCaps) => {
       capsRef.current = newCaps;
@@ -244,7 +279,7 @@ export default function Stage({ onFailure }: StageProps) {
     return unsubscribe;
   }, [onFailure]);
 
-  // Scroll handler (B5.6)
+  // Scroll handler
   useEffect(() => {
     const handleScroll = () => {
       updateProgressFromScroll();
@@ -255,7 +290,7 @@ export default function Stage({ onFailure }: StageProps) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [updateProgressFromScroll]);
 
-  // Resize handler (B5.7)
+  // B12.10: Resize handler with multiple triggers
   useEffect(() => {
     const handleResize = () => {
       updateScrollMeasurements();
@@ -264,10 +299,26 @@ export default function Stage({ onFailure }: StageProps) {
     };
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    
+    // B12.10: Also re-measure on load and fonts-ready
+    const on_load = () => {
+      updateScrollMeasurements();
+      ticker.wake();
+    };
+    window.addEventListener('load', on_load);
+    
+    document.fonts.ready.then(() => {
+      updateScrollMeasurements();
+      ticker.wake();
+    });
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('load', on_load);
+    };
   }, [updateScrollMeasurements, updateProgressFromScroll]);
 
-  // IntersectionObserver for visibility (B5.4)
+  // B12.9: Visibility observer with threshold 0
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -278,14 +329,14 @@ export default function Stage({ onFailure }: StageProps) {
           ticker.wake();
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0 }
     );
 
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
 
-  // Pointer parallax handler (B5.13)
+  // B12.6: Pointer parallax with proper easing
   useEffect(() => {
     if (!capsRef.current.stageMode || contactSheetOpen) return;
 
@@ -296,198 +347,251 @@ export default function Stage({ onFailure }: StageProps) {
       ticker.wake();
     };
 
+    // B12.6: Reset on mouseleave, blur, modal open
     const handlePointerLeave = () => {
       parallaxRef.current = setParallaxTarget(parallaxRef.current, 0, 0);
       ticker.wake();
     };
 
-    window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    window.addEventListener('pointerleave', handlePointerLeave);
+    const handleBlur = () => {
+      parallaxRef.current = setParallaxTarget(parallaxRef.current, 0, 0);
+      ticker.wake();
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    document.documentElement.addEventListener('mouseleave', handlePointerLeave);
+    window.addEventListener('blur', handleBlur);
+    
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerleave', handlePointerLeave);
+      document.documentElement.removeEventListener('mouseleave', handlePointerLeave);
+      window.removeEventListener('blur', handleBlur);
     };
   }, [contactSheetOpen]);
 
-  // Animation loop (B5.4, B5.5)
+  // B12.3, B12.4, B12.5, B12.13: Animation loop with all fixes
   useEffect(() => {
     if (!capsRef.current.stageMode) return;
 
     const subscriber = {
-      active: () => isVisibleRef.current && !contactSheetOpen,
-      update: (dt: number) => {
-        if (!rendererRef.current || !stageRef.current || !viewfinderRef.current) return;
-
-        // B5.15: Clamp elapsed time
-        const clampedDt = Math.min(dt, 0.05);
+      active: () => {
+        if (!isVisibleRef.current || contactSheetOpen) return false;
         
-        // B5.5: Frame-rate independent exponential smoothing
-        const responseRate = 10; // responses per second
-        const smoothFactor = 1 - Math.exp(-responseRate * clampedDt);
-        const progressDiff = targetProgressRef.current - progressRef.current;
-        progressRef.current += progressDiff * smoothFactor;
+        // B12.3: Only active while something is moving
+        const progressDiff = Math.abs(targetProgressRef.current - progressRef.current);
+        const parallaxDiff = Math.abs(parallaxRef.current.target.x - parallaxRef.current.current.x) +
+                            Math.abs(parallaxRef.current.target.y - parallaxRef.current.current.y) +
+                            Math.abs(parallaxRef.current.target.yaw - parallaxRef.current.current.yaw);
+        
+        return progressDiff > PROGRESS_EPSILON || 
+               parallaxDiff > PARALLAX_EPSILON ||
+               (rendererRef.current?.isTextureLoading() ?? false);
+      },
+      update: (dt: number) => {
+        try {
+          if (!rendererRef.current || !stageRef.current) return;
 
-        // Reset velocity at clamps
-        if (Math.abs(progressDiff) < 0.0001) {
-          progressRef.current = targetProgressRef.current;
-        }
+          // B12.8: Real frame time for ladder
+          const now = performance.now();
+          const realDt = (now - lastTickTimeRef.current) / 1000;
+          lastTickTimeRef.current = now;
 
-        const journey = journeyRef.current;
-        const segment = getSegmentAt(journey, progressRef.current);
-        const chapterProgress = getLocalProgress(segment, progressRef.current);
+          // Frame-rate independent smoothing
+          const responseRate = 10;
+          const smoothFactor = 1 - Math.exp(-responseRate * dt);
+          const progressDiff = targetProgressRef.current - progressRef.current;
+          progressRef.current += progressDiff * smoothFactor;
 
-        // Update discrete state only when changed (B5.1)
-        if (segment.chapter !== currentChapter) {
-          setCurrentChapter(segment.chapter);
-          // B10.7: Announce chapter change to screen readers
-          if (previousChapterRef.current !== segment.chapter) {
-            setAnnouncement(`Now viewing ${copy.chapters[segment.chapter].title}`);
-            previousChapterRef.current = segment.chapter;
-            // Clear announcement after 3 seconds
-            setTimeout(() => setAnnouncement(''), 3000);
+          if (Math.abs(progressDiff) < PROGRESS_EPSILON) {
+            progressRef.current = targetProgressRef.current;
           }
-        }
-        if (segment.type === 'title') {
-          if (!isTitleSegment) setIsTitleSegment(true);
-          setCurrentFrameIndex(0);
-        } else {
-          if (isTitleSegment) setIsTitleSegment(false);
-          const frameIndex = segment.frameIndex ?? 0;
-          if (frameIndex !== currentFrameIndex) {
-            setCurrentFrameIndex(frameIndex);
-          }
-        }
 
-        // Compute focus state
-        const chapterPhotos = getFeaturedPhotos(segment.chapter);
-        const totalFrames = chapterPhotos.length;
-        const focusState = segment.type === 'title'
-          ? { focusPosition: 0, focusedFrameIndex: 0, isRacking: false, rackProgress: 0 }
-          : computeFocusState(chapterProgress, totalFrames);
+          const journey = journeyRef.current;
+          const segment = getSegmentAt(journey, progressRef.current);
+          
+          // B12.2: Segment-based focus
+          const chapterPhotos = getFeaturedPhotos(segment.chapter);
+          const isLastFrame = segment.type === 'frame' && 
+                             segment.frameIndex === chapterPhotos.length - 1;
+          const localProgress = getLocalProgress(segment, progressRef.current);
+          
+          const focusState = computeFocusFromSegment(
+            segment.type,
+            segment.type === 'frame' ? (segment.frameIndex ?? 0) : 0,
+            localProgress,
+            isLastFrame
+          );
+          
+          focusRef.current = focusState.f;
 
-        focusDepthRef.current = focusState.focusPosition;
-        blurRef.current = circleOfConfusion(
-          segment.type === 'frame' ? (segment.frameIndex ?? 0) : 0,
-          focusState.focusPosition,
-          1.0,
-          1.5
-        );
+          // B12.2: Chapter progress for camera moves
+          const chapterProgress = getChapterProgress(journey, segment.chapter, progressRef.current);
 
-        const locked = blurRef.current < 0.15;
-        if (locked !== focusLocked) {
-          setFocusLocked(locked);
-        }
+          // B12.6: Ease parallax
+          parallaxRef.current = easeParallax(parallaxRef.current, dt);
 
-        // B5.11: Title card opacity
-        if (segment.type === 'title') {
-          const titleProgress = chapterProgress;
-          const opacity = titleProgress < 0.2 ? titleProgress / 0.2 : titleProgress > 0.8 ? (1 - titleProgress) / 0.2 : 1;
-          setTitleOpacity(opacity);
-        } else {
-          if (titleOpacity !== 0) setTitleOpacity(0);
-        }
-
-        // Camera
-        const camera = cameraFor(
-          segment.chapter,
-          chapterProgress,
-          focusState.focusPosition,
-          parallaxRef.current
-        );
-
-        // Build planes
-        const { stageWidth, stageHeight } = scrollMeasurementsRef.current;
-        const screenAspect = stageWidth / stageHeight;
-        const maxPlanes = capsRef.current.maxPlanes;
-        const planes = [];
-
-        for (let i = 0; i < Math.min(chapterPhotos.length, maxPlanes); i++) {
-          const photo = chapterPhotos[i];
-          const [pw, ph] = getAspect(photo);
-          const photoAspect = pw / ph;
-          const planeDistance = camera.z - i * 2.5;
-          if (planeDistance <= 0.1) continue;
-
-          const rect = computePlaneRect(
-            photoAspect,
-            planeDistance,
-            STAGE_FOV,
-            screenAspect,
-            i,
-            chapterPhotos.length
+          // Camera
+          const camera = cameraFor(
+            segment.chapter,
+            focusState.f,
+            chapterProgress,
+            parallaxRef.current
           );
 
-          let opacity = 1.0;
-          const distFromFocus = Math.abs(i - focusState.focusPosition);
-          if (distFromFocus > 3) {
-            opacity *= Math.max(0, 1 - (distFromFocus - 3) * 0.3);
+          // B12.11: Group opacity
+          let groupOpacity = 1;
+          if (segment.type === 'title') {
+            if (localProgress < TITLE_FADE_IN_END) {
+              groupOpacity = (localProgress / TITLE_FADE_IN_END) * 0.35;
+            } else if (localProgress > TITLE_FADE_OUT_START) {
+              const t = (localProgress - TITLE_FADE_OUT_START) / (1 - TITLE_FADE_OUT_START);
+              groupOpacity = 0.35 + t * 0.65;
+            } else {
+              groupOpacity = 0.35;
+            }
+          } else if (segment.type === 'frame' && 
+                     segment.frameIndex === chapterPhotos.length - 1 &&
+                     localProgress > GROUP_FADE_OUT_START) {
+            const t = (localProgress - GROUP_FADE_OUT_START) / (1 - GROUP_FADE_OUT_START);
+            groupOpacity = 1 - t;
           }
-          if (i < focusState.focusPosition - 0.5) {
-            const passed = focusState.focusPosition - i - 0.5;
-            opacity *= Math.max(0, 1 - passed * 0.5);
+
+          // B12.11: Title opacity
+          let titleOpacity = 0;
+          if (segment.type === 'title') {
+            if (segment.chapter === 'weddings' && progressRef.current < 0.01) {
+              titleOpacity = 1; // First chapter starts at 1
+            } else if (localProgress < TITLE_FADE_IN_END) {
+              titleOpacity = localProgress / TITLE_FADE_IN_END;
+            } else if (localProgress > TITLE_FADE_OUT_START) {
+              titleOpacity = 1 - (localProgress - TITLE_FADE_OUT_START) / (1 - TITLE_FADE_OUT_START);
+            } else {
+              titleOpacity = 1;
+            }
           }
-          if (opacity < 0.01) continue;
 
-          planes.push({
-            textureId: photo.id,
-            depth: i,
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height,
-            opacity
-          });
-        }
-
-        rendererRef.current.setPlanes(planes);
-        const frameTime = rendererRef.current.render(camera, focusDepthRef.current, 2.5, clampedDt);
-
-        if (ladderRef.current) {
-          ladderRef.current.recordFrame(frameTime);
-        }
-
-        // B5.2: Update viewfinder rect directly via DOM (no React state)
-        if (segment.type === 'frame' && (segment.frameIndex ?? 0) < chapterPhotos.length) {
-          const frameIndex = segment.frameIndex ?? 0;
-          const photo = chapterPhotos[frameIndex];
-          const [pw, ph] = getAspect(photo);
-          const photoAspect = pw / ph;
-          const planeDistance = camera.z - frameIndex * 2.5;
-          const planeRect = computePlaneRect(
-            photoAspect,
-            planeDistance,
-            STAGE_FOV,
-            screenAspect,
-            frameIndex,
-            chapterPhotos.length
-          );
-
-          const screenRect = projectPlaneToScreen(
-            planeRect,
-            camera.z,
-            frameIndex * 2.5,
-            STAGE_FOV,
-            screenAspect,
-            stageWidth,
-            stageHeight
-          );
-
-          // Direct DOM manipulation (B5.2)
-          if (viewfinderRef.current) {
-            viewfinderRef.current.style.left = `${screenRect.left}px`;
-            viewfinderRef.current.style.top = `${screenRect.top}px`;
-            viewfinderRef.current.style.width = `${screenRect.width}px`;
-            viewfinderRef.current.style.height = `${screenRect.height}px`;
+          // B12.4: Apply title opacity via ref
+          if (titleRef.current) {
+            titleRef.current.style.opacity = String(titleOpacity);
           }
+
+          // Update discrete state only when changed
+          if (segment.chapter !== currentChapter) {
+            setCurrentChapter(segment.chapter);
+            lastChapterRef.current = segment.chapter;
+            
+            // B12.5: Rebuild planes for new chapter
+            const { stageWidth, stageHeight } = scrollMeasurementsRef.current;
+            buildChapterPlanes(segment.chapter, stageWidth, stageHeight);
+            
+            // B12.7: Announce chapter change
+            if (previousChapterRef.current !== segment.chapter) {
+              setAnnouncement(`Now viewing ${copy.chapters[segment.chapter].title}`);
+              previousChapterRef.current = segment.chapter;
+              if (announcementTimeoutRef.current) {
+                clearTimeout(announcementTimeoutRef.current);
+              }
+              announcementTimeoutRef.current = window.setTimeout(() => setAnnouncement(''), 3000);
+            }
+          }
+          
+          if (segment.type === 'title') {
+            if (!isTitleSegment) setIsTitleSegment(true);
+            setCurrentFrameIndex(0);
+          } else {
+            if (isTitleSegment) setIsTitleSegment(false);
+            const frameIndex = segment.frameIndex ?? 0;
+            if (frameIndex !== currentFrameIndex) {
+              setCurrentFrameIndex(frameIndex);
+            }
+          }
+          
+          if (focusState.isLocked !== focusLocked) {
+            setFocusLocked(focusState.isLocked);
+          }
+
+          // B12.5: Render with focus and group opacity
+          rendererRef.current.render(camera, focusState.f, groupOpacity);
+
+          if (ladderRef.current) {
+            ladderRef.current.recordFrame(realDt * 1000);
+          }
+
+          // B12.5: Update viewfinder
+          if (viewfinderRef.current && segment.type === 'frame' && !loading) {
+            const frameIndex = segment.frameIndex ?? 0;
+            const { stageWidth, stageHeight } = scrollMeasurementsRef.current;
+            
+            // Interpolate between current and next photo during rack
+            let viewScreenRect;
+            if (focusState.isRacking && frameIndex < chapterPhotos.length - 1) {
+              const nextIndex = frameIndex + 1;
+              const currentLayout = chapterLayoutRef.current[frameIndex];
+              const nextLayout = chapterLayoutRef.current[nextIndex];
+              
+              if (currentLayout && nextLayout) {
+                const t = focusState.f - frameIndex;
+                const interpLayout: PlaneLayout = {
+                  x: currentLayout.x + (nextLayout.x - currentLayout.x) * t,
+                  y: currentLayout.y + (nextLayout.y - currentLayout.y) * t,
+                  width: currentLayout.width + (nextLayout.width - currentLayout.width) * t,
+                  height: currentLayout.height + (nextLayout.height - currentLayout.height) * t,
+                };
+                
+                const photoZ = -frameIndex * PLANE_SPACING + t * PLANE_SPACING;
+                viewScreenRect = projectPlaneToScreen(
+                  interpLayout,
+                  camera.x,
+                  camera.y,
+                  camera.z,
+                  camera.yaw,
+                  photoZ,
+                  stageWidth,
+                  stageHeight
+                );
+              }
+            } else {
+              const layout = chapterLayoutRef.current[frameIndex];
+              if (layout) {
+                const photoZ = -frameIndex * PLANE_SPACING;
+                viewScreenRect = projectPlaneToScreen(
+                  layout,
+                  camera.x,
+                  camera.y,
+                  camera.z,
+                  camera.yaw,
+                  photoZ,
+                  stageWidth,
+                  stageHeight
+                );
+              }
+            }
+            
+            if (viewScreenRect && viewfinderRef.current) {
+              viewfinderRef.current.style.left = `${viewScreenRect.left}px`;
+              viewfinderRef.current.style.top = `${viewScreenRect.top}px`;
+              viewfinderRef.current.style.width = `${viewScreenRect.width}px`;
+              viewfinderRef.current.style.height = `${viewScreenRect.height}px`;
+            }
+          }
+        } catch (err) {
+          // B12.13: Catch errors in loop
+          console.error('Stage loop error:', err);
+          onFailure();
         }
       }
     };
 
     const unsubscribe = ticker.subscribe(subscriber, 0);
-    return unsubscribe;
-  }, [currentChapter, currentFrameIndex, isTitleSegment, focusLocked, titleOpacity, contactSheetOpen]);
+    return () => {
+      unsubscribe();
+      if (announcementTimeoutRef.current) {
+        clearTimeout(announcementTimeoutRef.current);
+      }
+    };
+  }, []); // B12.4: Empty deps, subscribe once
 
-  // Handle chapter hash on load (B5.8)
+  // Handle chapter hash on load
   useEffect(() => {
     const hash = window.location.hash.slice(1);
     if (hash && chapters.includes(hash as Chapter)) {
@@ -499,13 +603,12 @@ export default function Stage({ onFailure }: StageProps) {
     }
   }, []);
 
-  // Scroll lock for contact sheet (B5.9)
+  // B12.12: Scroll lock coordination
   useEffect(() => {
     if (contactSheetOpen) {
       lockScroll();
-    } else {
-      unlockScroll();
     }
+    
     return () => {
       if (contactSheetOpen) {
         unlockScroll();
@@ -513,7 +616,8 @@ export default function Stage({ onFailure }: StageProps) {
     };
   }, [contactSheetOpen]);
 
-  const chapterPhotos = [...getFeaturedPhotos(currentChapter)];
+  // B12.14: Memoize chapter photos
+  const chapterPhotos = useRef(getFeaturedPhotos(currentChapter)).current;
 
   return (
     <div
@@ -532,7 +636,7 @@ export default function Stage({ onFailure }: StageProps) {
           aria-hidden="true"
         />
 
-        {/* B10.7: Live region for chapter announcements */}
+        {/* B12.7: Live region for announcements */}
         {announcement && (
           <div
             role="status"
@@ -544,52 +648,47 @@ export default function Stage({ onFailure }: StageProps) {
           </div>
         )}
 
-        {/* Loading indicator (B5.12) */}
+        {/* Loading indicator */}
         {loading && <LoadingIndicator />}
 
-        {/* Viewfinder overlay */}
-        {!loading && (
-          <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-            {/* Viewfinder marks (B5.2, B5.3) */}
-            {!isTitleSegment && (
-              <div
-                ref={viewfinderRef}
-                className="absolute"
-                style={{
-                  left: 0,
-                  top: 0,
-                  width: 0,
-                  height: 0
-                }}
-              >
-                <div className="vf-mark vf-mark-tl" />
-                <div className="vf-mark vf-mark-tr" />
-                <div className="vf-mark vf-mark-bl" />
-                <div className="vf-mark vf-mark-br" />
-              </div>
-            )}
+        {/* B12.1: Viewfinder always mounted, hidden with opacity */}
+        <div
+          ref={viewfinderRef}
+          className="absolute pointer-events-none"
+          style={{
+            opacity: !loading && !isTitleSegment ? 1 : 0,
+            left: 0,
+            top: 0,
+            width: 0,
+            height: 0,
+          }}
+          aria-hidden="true"
+        >
+          <div className="vf-mark vf-mark-tl" />
+          <div className="vf-mark vf-mark-tr" />
+          <div className="vf-mark vf-mark-bl" />
+          <div className="vf-mark vf-mark-br" />
+        </div>
 
-            {/* HUD (B5.11) */}
-            {!isTitleSegment && (
-              <>
-                <FrameCounter
-                  chapter={currentChapter}
-                  frameIndex={currentFrameIndex}
-                  totalFrames={chapterPhotos.length}
-                />
-                <FocusIndicator locked={focusLocked} />
-                <CaptureSettings photo={chapterPhotos[currentFrameIndex] || null} />
-              </>
-            )}
-          </div>
+        {/* HUD */}
+        {!loading && !isTitleSegment && (
+          <>
+            <FrameCounter
+              chapter={currentChapter}
+              frameIndex={currentFrameIndex}
+              totalFrames={chapterPhotos.length}
+            />
+            <FocusIndicator locked={focusLocked} />
+            <CaptureSettings photo={chapterPhotos[currentFrameIndex] || null} />
+          </>
         )}
 
-        {/* Chapter title (B5.11) */}
+        {/* B12.4: Title card with ref */}
         {!loading && isTitleSegment && (
-          <ChapterTitle chapter={currentChapter} opacity={titleOpacity} />
+          <ChapterTitle chapter={currentChapter} titleRef={titleRef} />
         )}
 
-        {/* Progress rail (B5.8) */}
+        {/* Progress rail */}
         <nav className="absolute right-5 top-1/2 -translate-y-1/2 flex flex-col gap-4 pointer-events-auto" aria-label="Chapter progress">
           {chapters.map((ch) => (
             <button
@@ -601,6 +700,7 @@ export default function Stage({ onFailure }: StageProps) {
               }}
               className={`group relative w-6 h-6 flex items-center justify-center`}
               aria-label={`Go to ${copy.chapters[ch].title}`}
+              aria-current={currentChapter === ch ? 'step' : undefined}
             >
               <div className={`progress-tick ${currentChapter === ch ? 'active' : ''}`} />
               <span className="absolute right-8 font-mono text-[11px] text-stage-muted uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
@@ -626,16 +726,16 @@ export default function Stage({ onFailure }: StageProps) {
         )}
       </div>
 
-      {/* Contact Sheet (B5.9, B5.16) */}
+      {/* Contact Sheet */}
       {contactSheetOpen && (
         <ContactSheet
           chapter={currentChapter}
-          photos={chapterPhotos}
+          photos={[...chapterPhotos]}
           onClose={closeContactSheet}
         />
       )}
 
-      {/* B5.10: Hidden accessible content with lazy loading */}
+      {/* B12.14: Screen-reader content as text, not images */}
       <div className="sr-only">
         {chapters.map(ch => {
           const photos = getFeaturedPhotos(ch);
@@ -643,14 +743,7 @@ export default function Stage({ onFailure }: StageProps) {
             <section key={ch}>
               <ul aria-label={`${copy.chapters[ch].title} photos`}>
                 {photos.map(photo => (
-                  <li key={photo.id}>
-                    <img
-                      src={getPhotoSrc(photo, 'thumbnail')}
-                      alt={photo.alt}
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  </li>
+                  <li key={photo.id}>{photo.alt}</li>
                 ))}
               </ul>
             </section>
@@ -661,44 +754,32 @@ export default function Stage({ onFailure }: StageProps) {
   );
 }
 
-// ContactSheet component (B5.9, B5.16)
+// ContactSheet component
 function ContactSheet({ chapter, photos, onClose }: {
   chapter: Chapter;
   photos: Photo[];
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    // Store trigger for focus return
-    triggerRef.current = document.activeElement as HTMLButtonElement;
-    
     if (dialogRef.current && !dialogRef.current.open) {
       dialogRef.current.showModal();
     }
-
-    // Focus first focusable element
-    setTimeout(() => {
-      const closeButton = dialogRef.current?.querySelector('button');
-      closeButton?.focus();
-    }, 0);
-
+    lockScroll();
+    
     return () => {
-      // Return focus to trigger (B5.9)
-      triggerRef.current?.focus();
+      unlockScroll();
     };
   }, []);
-
-  const handleDialogClose = () => {
-    onClose();
-  };
 
   return (
     <dialog
       ref={dialogRef}
       className="fixed inset-0 z-[60] bg-stage/97 w-full h-full p-0 m-0"
-      onClose={handleDialogClose}
+      onClose={onClose}
+      role="dialog"
+      aria-modal="true"
       aria-label={`Contact sheet for ${copy.chapters[chapter].title}`}
     >
       <div className="h-full overflow-auto p-6 md:p-12">
@@ -722,7 +803,6 @@ function ContactSheet({ chapter, photos, onClose }: {
             </button>
           </div>
           
-          {/* B5.16: Use thumbnails with srcset */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
             {photos.map((photo, i) => (
               <div key={photo.id} className="relative aspect-[3/2] bg-stage overflow-hidden group">
