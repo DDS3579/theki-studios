@@ -34,11 +34,12 @@ export default function PhotoFrame({
       className="absolute inset-0 flex items-center justify-center"
       style={{
         // Initial state for GSAP animation
-        clipPath: 'inset(100% 0 0 0)',
+        // F3: Safari-compatible reveal using scaled wrapper instead of clip-path
         transform: 'scale(1.12) translateY(6%)',
       }}
     >
       {/* C1: Clipping wrapper with fixed aspect ratio */}
+      {/* F3: Safari fallback - use overflow hidden wrapper with scaleY animation */}
       <div
         className={`relative overflow-hidden ${
           isPortrait
@@ -47,6 +48,9 @@ export default function PhotoFrame({
         } ${isPortrait ? (photoIndex % 2 === 0 ? 'md:mr-auto md:pl-[11vw]' : 'md:ml-auto md:pr-[11vw]') : ''}`}
         style={{
           aspectRatio: `${width}/${height}`,
+          // F3: Initial state for reveal animation (Safari-compatible)
+          transform: 'scaleY(0)',
+          transformOrigin: 'bottom',
         }}
       >
         {hasError ? (

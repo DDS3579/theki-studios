@@ -170,20 +170,23 @@ export default function ChapterRoom({
         
         if (!photoElement) return;
 
+        // F3: Get the inner wrapper for Safari-compatible reveal
+        const wrapperElement = photoElement.querySelector('.relative.overflow-hidden') as HTMLElement;
+
         const enterWindow = SEGMENT_LENGTH_PER_PHOTO * 0.4; // 40% for enter
         const dwellTime = SEGMENT_LENGTH_PER_PHOTO * (1 / 3); // 1/3 for dwell
         const exitTime = SEGMENT_LENGTH_PER_PHOTO - enterWindow - dwellTime;
 
-        // Photo enter: mask reveal, scale 112% → 100%, offset +6% → 0%
+        // Photo enter: F3: Safari-compatible reveal using scaleY on wrapper
+        // Outer element: scale 112% → 100%, offset +6% → 0%
+        // Inner wrapper: scaleY 0 → 1 (reveal from bottom)
         tl.fromTo(
           photoElement,
           {
-            clipPath: 'inset(100% 0 0 0)',
             scale: 1.12,
             y: '6%',
           },
           {
-            clipPath: 'inset(0% 0 0 0)',
             scale: 1,
             y: '0%',
             duration: enterWindow,
@@ -191,6 +194,20 @@ export default function ChapterRoom({
           },
           currentTime
         );
+
+        // F3: Animate the wrapper's scaleY for the reveal effect
+        if (wrapperElement) {
+          tl.fromTo(
+            wrapperElement,
+            { scaleY: 0 },
+            {
+              scaleY: 1,
+              duration: enterWindow,
+              ease: EASING,
+            },
+            currentTime
+          );
+        }
 
         // Caption fade in
         if (captionElement) {
