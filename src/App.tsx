@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
+import Work from './components/Work';
 import Archive from './components/Archive';
 import Services from './components/Services';
 import Contact from './components/Contact';
@@ -34,17 +35,8 @@ export default function App() {
           {/* Hero - the first frame */}
           <Hero />
 
-          {/* Work section - will be replaced with new DOM-based gallery in next batch */}
-          <section id="work" className="bg-stage min-h-screen flex items-center justify-center">
-            <div className="text-center text-stage-text">
-              <p className="font-mono text-sm uppercase tracking-widest mb-4">
-                Work Section
-              </p>
-              <p className="font-sans text-base max-w-md mx-auto">
-                The new DOM-based scroll gallery will be implemented in the next batch.
-              </p>
-            </div>
-          </section>
+          {/* Work section - DOM-based scroll gallery */}
+          <Work />
 
           {/* Transition: dark to light — the room brightens */}
           <div className="relative h-32 md:h-48 bg-linear-to-b from-stage to-paper" aria-hidden="true">
