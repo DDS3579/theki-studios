@@ -1,14 +1,15 @@
-// B12.44: Owner-aware scroll lock utility
+// Owner-aware scroll lock utility
 // Used by Header, Archive, and ContactSheet
+// Rewired to use Lenis stop/start for smooth scroll integration
+
+import { stop, resume } from './smoothScroll';
 
 const locks = new Set<string>();
-let originalOverflow = '';
 
 export function lockScroll(owner: string = 'default') {
   if (locks.size === 0) {
-    originalOverflow = document.documentElement.style.overflow;
-    // B12.44: Lock documentElement, not body
-    document.documentElement.style.overflow = 'hidden';
+    // Stop Lenis smooth scrolling
+    stop();
     // Add scrollbar gutter to prevent layout shift
     document.documentElement.style.scrollbarGutter = 'stable';
   }
@@ -18,7 +19,8 @@ export function lockScroll(owner: string = 'default') {
 export function unlockScroll(owner: string = 'default') {
   locks.delete(owner);
   if (locks.size === 0) {
-    document.documentElement.style.overflow = originalOverflow;
+    // Resume Lenis smooth scrolling
+    resume();
     document.documentElement.style.scrollbarGutter = '';
   }
 }
