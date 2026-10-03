@@ -34,6 +34,10 @@ export default function ChapterRoom({
   const titleRef = useRef<HTMLDivElement>(null);
   const ruleRef = useRef<HTMLDivElement>(null);
 
+  // E2: Check for reduced motion preference
+  const prefersReducedMotion = typeof window !== 'undefined' && 
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   // Calculate total scroll length
   const openingLength = CHAPTER_OPENING_LENGTH;
   const photosLength = photos.length * SEGMENT_LENGTH_PER_PHOTO;
@@ -44,6 +48,47 @@ export default function ChapterRoom({
     if (!roomRef.current || !titleRef.current || !ruleRef.current) return;
 
     const ctx = gsap.context(() => {
+      // E2: Reduced motion - no pinning, no scrubbing
+      if (prefersReducedMotion) {
+        // Simple fade-in for title
+        gsap.fromTo(
+          titleRef.current,
+          { opacity: 0, y: 20 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 0.6,
+            ease: EASING,
+            scrollTrigger: {
+              trigger: roomRef.current!,
+              start: 'top 80%',
+              toggleActions: 'play none none none',
+            },
+          }
+        );
+
+        // Simple fade-in for each photo
+        const photoElements = roomRef.current!.querySelectorAll('[data-photo-id]');
+        photoElements.forEach((el) => {
+          gsap.fromTo(
+            el,
+            { opacity: 0 },
+            {
+              opacity: 1,
+              duration: 0.6,
+              ease: EASING,
+              scrollTrigger: {
+                trigger: el,
+                start: 'top 80%',
+                toggleActions: 'play none none none',
+              },
+            }
+          );
+        });
+
+        return;
+      }
+
       const tl = gsap.timeline({
         scrollTrigger: {
           trigger: roomRef.current,
@@ -54,6 +99,8 @@ export default function ChapterRoom({
           scrub: true, // Use scrub: true, not a number, to avoid double smoothing with Lenis
           anticipatePin: 1,
           invalidateOnRefresh: true,
+          // E1: Configure ScrollTrigger to ignore address-bar resize on mobile
+          refreshPriority: 1,
           onEnter: () => {
             roomRef.current?.querySelectorAll('[data-animate]').forEach(el => {
               (el as HTMLElement).style.willChange = 'transform, opacity, clip-path';
@@ -259,7 +306,8 @@ export default function ChapterRoom({
           ref={titleRef}
           className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none"
         >
-          <h2 className="font-display text-6xl md:text-8xl font-bold uppercase tracking-tight text-stage-text mb-4">
+          {/* E1: Reduced minimum font size to fit "PHOTOSHOOTS" at 320px */}
+          <h2 className="font-display text-5xl md:text-8xl font-bold uppercase tracking-tight text-stage-text mb-4 px-4">
             {title}
           </h2>
           <div

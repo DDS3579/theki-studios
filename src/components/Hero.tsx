@@ -1,54 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useRef } from 'react';
+import { useGSAP } from '@gsap/react';
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { copy, chapters, getPhotosByChapter, getPhotoSrc, getPhotoSrcSet, getHeroPhoto } from '../content';
+import { EASING } from '../lib/motion';
+
+gsap.registerPlugin(ScrollTrigger);
 
 export default function Hero() {
-  const [loaded, setLoaded] = useState(false);
-
-  // B7.4: Wait for image and fonts to load before starting intro
-  useEffect(() => {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    
-    if (prefersReducedMotion) {
-      setLoaded(true);
-      return;
-    }
-
-    const heroPhoto = getHeroPhoto('weddings');
-    if (!heroPhoto) {
-      setLoaded(true);
-      return;
-    }
-
-    const heroSrc = getPhotoSrc(heroPhoto, 'hero');
-    
-    // Wait for image to load
-    const img = new Image();
-    img.src = heroSrc;
-    
-    const imagePromise = new Promise<void>((resolve) => {
-      if (img.complete) {
-        resolve();
-      } else {
-        img.onload = () => resolve();
-        img.onerror = () => resolve(); // Continue even if image fails
-      }
-    });
-
-    // Wait for fonts to load (with timeout)
-    const fontsPromise = document.fonts.ready.catch(() => {});
-    
-    // Maximum wait time: 1.2 seconds
-    const timeoutPromise = new Promise<void>((resolve) => {
-      setTimeout(resolve, 1200);
-    });
-
-    Promise.race([
-      Promise.all([imagePromise, fontsPromise]),
-      timeoutPromise
-    ]).then(() => {
-      setLoaded(true);
-    });
-  }, []);
+  const sectionRef = useRef<HTMLElement>(null);
+  const imageRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const headlineRef = useRef<HTMLHeadingElement>(null);
+  const supportRef = useRef<HTMLParagraphElement>(null);
+  const ctaRef = useRef<HTMLDivElement>(null);
+  const scrollCueRef = useRef<HTMLDivElement>(null);
 
   // B1.4: read hero image from content
   const heroPhoto = getHeroPhoto('weddings');
@@ -57,13 +23,110 @@ export default function Hero() {
 
   const totalFrames = chapters.reduce((sum, ch) => sum + getPhotosByChapter(ch).length, 0);
 
+  useGSAP(() => {
+    if (!sectionRef.current) return;
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    
+    const ctx = gsap.context(() => {
+      if (prefersReducedMotion) {
+        // Show everything immediately for reduced motion
+        gsap.set([headlineRef.current, supportRef.current, ctaRef.current, scrollCueRef.current], {
+          opacity: 1,
+          y: 0,
+        });
+        return;
+      }
+
+      // D1: Calm intro sequence
+      const tl = gsap.timeline({
+        delay: 0.2,
+      });
+
+      // Headline lines rise in with mask
+      if (headlineRef.current) {
+        const lines = headlineRef.current.querySelectorAll('.headline-line');
+        tl.fromTo(
+          lines,
+          { y: '100%', opacity: 0 },
+          {
+            y: '0%',
+            opacity: 1,
+            duration: 0.8,
+            stagger: 0.08,
+            ease: EASING,
+          }
+        );
+      }
+
+      // Image settles from 106% to 100% over 1.4s
+      if (imageRef.current) {
+        tl.fromTo(
+          imageRef.current,
+          { scale: 1.06 },
+          {
+            scale: 1,
+            duration: 1.4,
+            ease: EASING,
+          },
+          0 // Start at same time as headline
+        );
+      }
+
+      // Support text and CTAs fade in
+      tl.fromTo(
+        [supportRef.current, ctaRef.current, scrollCueRef.current],
+        { opacity: 0, y: 16 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.7,
+          stagger: 0.15,
+          ease: EASING,
+        },
+        0.7
+      );
+
+      // D1: Parallax on scroll - image drifts 8% slower than page
+      if (imageRef.current) {
+        gsap.to(imageRef.current, {
+          yPercent: -8,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: 'top top',
+            end: 'bottom top',
+            scrub: true,
+          },
+        });
+      }
+
+      // D1: Darken overlay slightly on scroll
+      if (overlayRef.current) {
+        gsap.to(overlayRef.current, {
+          opacity: 0.3,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: 'top top',
+            end: 'bottom top',
+            scrub: true,
+          },
+        });
+      }
+    }, sectionRef.current);
+
+    return () => ctx.revert();
+  }, []);
+
   return (
     <section
+      ref={sectionRef}
       className="relative h-[100svh] w-full overflow-hidden bg-stage"
       aria-label="Introduction"
     >
       {/* Hero background image */}
-      <div className="absolute inset-0">
+      <div ref={imageRef} className="absolute inset-0">
         {heroSrc && (
           <img
             src={heroSrc}
@@ -77,9 +140,14 @@ export default function Hero() {
             decoding="async"
           />
         )}
-        {/* B7.7: Merged gradient overlays into one */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(36,26,18,1)_0%,rgba(36,26,18,0.5)_50%,rgba(36,26,18,0.2)_100%),linear-gradient(to_right,rgba(36,26,18,0.6)_0%,transparent_100%)]" />
       </div>
+
+      {/* D1: Darken overlay on scroll */}
+      <div
+        ref={overlayRef}
+        className="absolute inset-0 bg-[linear-gradient(to_top,rgba(36,26,18,1)_0%,rgba(36,26,18,0.5)_50%,rgba(36,26,18,0.2)_100%),linear-gradient(to_right,rgba(36,26,18,0.6)_0%,transparent_100%)]"
+        style={{ opacity: 1 }}
+      />
 
       {/* Viewfinder corner marks */}
       <div className="absolute inset-6 md:inset-10 lg:inset-14 pointer-events-none" aria-hidden="true">
@@ -91,8 +159,7 @@ export default function Hero() {
 
       {/* Main content - left weighted */}
       <div className="relative z-10 h-full flex flex-col justify-end max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)] pb-20 md:pb-28 lg:pb-32">
-        {/* B7.7: Changed transition-all to specific properties */}
-        <div className={`transition-[opacity,transform] duration-700 ease-[var(--ease-focus)] ${loaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
+        <div>
           {/* B1.4: label from content */}
           <p className="font-mono text-[11px] md:text-xs text-stage-muted uppercase tracking-[0.25em] mb-5 md:mb-7">
             {copy.hero.label}
@@ -100,18 +167,13 @@ export default function Hero() {
 
           {/* B1.4: headline lines from content */}
           <h1
+            ref={headlineRef}
             className="font-display font-black uppercase leading-[0.86] tracking-[-0.025em] text-stage-text mb-6 md:mb-8"
             style={{ fontSize: 'clamp(3.5rem, 10vw, 9rem)' }}
           >
             {copy.hero.headlineLines.map((line, i) => (
-              <span key={i} className="block overflow-hidden pb-1">
-                <span
-                  className="inline-block transition-transform duration-700 ease-[var(--ease-focus)]"
-                  style={{
-                    transform: loaded ? 'translateY(0)' : 'translateY(110%)',
-                    transitionDelay: `${0.3 + i * 0.12}s`,
-                  }}
-                >
+              <span key={i} className="headline-line block overflow-hidden pb-1">
+                <span className="inline-block">
                   {line}
                 </span>
               </span>
@@ -119,27 +181,19 @@ export default function Hero() {
           </h1>
 
           {/* B1.4: support text from content */}
-          {/* B7.7: Changed transition-all to specific properties */}
           <p
-            className="font-sans text-base md:text-lg text-stage-muted max-w-md mb-8 md:mb-10 transition-[opacity,transform] duration-700 ease-[var(--ease-focus)]"
-            style={{
-              opacity: loaded ? 1 : 0,
-              transform: loaded ? 'translateY(0)' : 'translateY(16px)',
-              transitionDelay: '0.7s',
-            }}
+            ref={supportRef}
+            className="font-sans text-base md:text-lg text-stage-muted max-w-md mb-8 md:mb-10"
+            style={{ opacity: 0 }}
           >
             {copy.hero.support}
           </p>
 
           {/* B1.4: CTAs from content */}
-          {/* B7.7: Changed transition-all to specific properties */}
           <div
-            className="flex flex-wrap gap-4 transition-[opacity,transform] duration-700 ease-[var(--ease-focus)]"
-            style={{
-              opacity: loaded ? 1 : 0,
-              transform: loaded ? 'translateY(0)' : 'translateY(16px)',
-              transitionDelay: '0.85s',
-            }}
+            ref={ctaRef}
+            className="flex flex-wrap gap-4"
+            style={{ opacity: 0 }}
           >
             <a
               href="#work"
@@ -175,8 +229,9 @@ export default function Hero() {
 
       {/* B7.8: Scroll cue - positioned above bottom strip, hidden on short viewports */}
       <div
-        className="absolute bottom-16 md:bottom-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 transition-opacity duration-500 max-md:hidden"
-        style={{ opacity: loaded ? 0.6 : 0 }}
+        ref={scrollCueRef}
+        className="absolute bottom-16 md:bottom-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 max-md:hidden"
+        style={{ opacity: 0 }}
         aria-hidden="true"
       >
         <span className="font-mono text-[11px] text-stage-muted uppercase tracking-[0.2em]">Scroll</span>

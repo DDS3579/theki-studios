@@ -1,68 +1,62 @@
 import { useEffect, useRef, useState } from 'react';
+import { useGSAP } from '@gsap/react';
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { socialLinks, copy } from '../content';
 import { lockScroll, unlockScroll } from '../lib/scrollLock';
 import { scrollToChapter, scrollToSection, scrollToTop } from '../lib/scrollTo';
 
+gsap.registerPlugin(ScrollTrigger);
+
 export default function Header() {
-  const [scrolled, setScrolled] = useState(false);
-  const [overDarkSection, setOverDarkSection] = useState(true); // Start over hero
   const [menuOpen, setMenuOpen] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const [isOverDark, setIsOverDark] = useState(true);
+  const [hasScrolled, setHasScrolled] = useState(false);
 
-  // B12.51: Track intersection state for each section separately
-  const sectionStates = useRef<Map<Element, boolean>>(new Map());
+  // D2: Use ScrollTrigger to detect which section is under the header
+  useGSAP(() => {
+    if (!headerRef.current) return;
 
-  // B6.1: Cache elements and use IntersectionObserver
-  useEffect(() => {
-    const heroSection = document.querySelector('section[aria-label="Introduction"]');
-    const workSection = document.getElementById('work');
-    
-    if (!heroSection || !workSection) return;
+    const ctx = gsap.context(() => {
+      // Create ScrollTrigger for hero section
+      ScrollTrigger.create({
+        trigger: 'section[aria-label="Introduction"]',
+        start: 'top top',
+        end: 'bottom top',
+        onEnter: () => setIsOverDark(true),
+        onLeave: () => setIsOverDark(false),
+        onEnterBack: () => setIsOverDark(true),
+        onLeaveBack: () => setIsOverDark(false),
+      });
 
-    // B12.52: Re-attach when elements change
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // B12.51: Update state for each entry
-        entries.forEach(entry => {
-          sectionStates.current.set(entry.target, entry.isIntersecting);
-        });
-        
-        // B12.51: Compute overDark from all tracked sections
-        const isOverDark = Array.from(sectionStates.current.values()).some(state => state);
-        setOverDarkSection(isOverDark);
-      },
-      {
-        rootMargin: '-80px 0px 0px 0px', // Header height
-        threshold: 0
-      }
-    );
+      // Create ScrollTrigger for work section
+      ScrollTrigger.create({
+        trigger: '#work',
+        start: 'top top',
+        end: 'bottom top',
+        onEnter: () => setIsOverDark(true),
+        onLeave: () => setIsOverDark(false),
+        onEnterBack: () => setIsOverDark(true),
+        onLeaveBack: () => setIsOverDark(false),
+      });
 
-    observer.observe(heroSection);
-    observer.observe(workSection);
+      // Track scroll position for background
+      ScrollTrigger.create({
+        trigger: 'body',
+        start: 'top top',
+        end: '99999px top',
+        onUpdate: (self) => {
+          setHasScrolled(self.scroll() > 40);
+        },
+      });
+    });
 
-    return () => observer.disconnect();
+    return () => ctx.revert();
   }, []);
 
-  // B6.1: Throttled scroll check for 40px threshold
-  useEffect(() => {
-    let ticking = false;
-    
-    const handleScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(() => {
-          setScrolled(window.scrollY > 40);
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // B6.7: Use shared scroll lock and guard showModal
   useEffect(() => {
     if (menuOpen) {
       if (dialogRef.current && !dialogRef.current.open) {
@@ -97,16 +91,14 @@ export default function Header() {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, [menuOpen]);
 
-  const textColor = overDarkSection ? 'text-stage-text' : 'text-ink';
+  const textColor = isOverDark ? 'text-stage-text' : 'text-ink';
 
   return (
     <>
-      {/* B6.2: Three-state header - transparent over dark, solid over light */}
-      {/* B6.3: No backdrop-blur over WebGL canvas */}
-      {/* B6.4: Only transition colors, not layout */}
       <header
+        ref={headerRef}
         className={`fixed top-0 left-0 right-0 z-50 transition-colors duration-300 ${
-          scrolled && !overDarkSection
+          hasScrolled && !isOverDark
             ? 'bg-paper border-b border-border'
             : 'bg-transparent'
         }`}
@@ -174,7 +166,7 @@ export default function Header() {
                   scrollToSection('contact');
                 }}
                 className={`font-sans text-sm border px-5 py-2.5 transition-colors duration-200 ${
-                  overDarkSection
+                  isOverDark
                     ? 'border-stage-text/30 text-stage-text hover:border-brass hover:text-brass'
                     : 'border-ink/20 text-ink hover:border-brass hover:text-brass'
                 }`}
@@ -184,13 +176,10 @@ export default function Header() {
             </nav>
 
             {/* Mobile menu button */}
-            {/* B6.7: Add aria-controls */}
             <button
               ref={menuButtonRef}
               onClick={() => setMenuOpen(true)}
-              className={`md:hidden p-3 transition-colors duration-300 ${
-                scrolled && !overDarkSection ? 'text-ink' : textColor
-              }`}
+              className={`md:hidden p-3 transition-colors duration-300 ${textColor}`}
               aria-label="Open menu"
               aria-expanded={menuOpen}
               aria-controls="mobile-menu"
@@ -206,8 +195,6 @@ export default function Header() {
       </header>
 
       {/* Mobile menu dialog */}
-      {/* B6.5: Solid paper background (fixed by B0.2) */}
-      {/* B6.7: Add id for aria-controls */}
       <dialog
         ref={dialogRef}
         id="mobile-menu"
@@ -288,7 +275,6 @@ export default function Header() {
             >
               Enquire
             </a>
-            {/* B6.9: Add target/rel, include YouTube */}
             {(socialLinks.instagram || socialLinks.facebook || socialLinks.youtube) && (
               <div className="flex flex-wrap gap-6 mt-6">
                 {socialLinks.instagram && (

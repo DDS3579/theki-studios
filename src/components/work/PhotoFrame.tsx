@@ -73,6 +73,7 @@ export default function PhotoFrame({
         )}
 
         {/* C3: Caption component */}
+        {/* E5: Ensure minimum 12px text and proper contrast */}
         <div
           data-caption-id={photo.id}
           className={`absolute ${
@@ -82,10 +83,10 @@ export default function PhotoFrame({
           }`}
           style={{ opacity: 0 }}
         >
-          <p className="font-mono text-xs text-stage-text/80 mb-1">
+          <p className="font-mono text-[12px] text-stage-text mb-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
             {captionTitle}
           </p>
-          <div className="flex items-center justify-between font-mono text-xs text-stage-text/60">
+          <div className="flex items-center justify-between font-mono text-[12px] text-stage-text drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
             <span>{chapter}</span>
             <span className="tabular-nums">
               {String(photoIndex + 1).padStart(2, '0')} / {String(totalPhotos).padStart(2, '0')}

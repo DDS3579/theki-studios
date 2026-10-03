@@ -1,13 +1,27 @@
 import { useEffect, useRef } from 'react';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { chapters, getFeaturedPhotos, copy } from '../content';
+import { chapters, getFeaturedPhotos, copy, type Chapter } from '../content';
 import ChapterRoom from './work/ChapterRoom';
 import WorkProgress from './work/WorkProgress';
+import { scrollToChapter } from '../lib/scrollTo';
 
 gsap.registerPlugin(ScrollTrigger);
 
 export default function Work() {
   const sectionRef = useRef<HTMLElement>(null);
+
+  // D4: Handle chapter name in URL hash on page load
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    
+    // Check if hash matches a chapter name
+    if (hash && chapters.includes(hash as Chapter)) {
+      // Wait for ScrollTrigger to be ready
+      setTimeout(() => {
+        scrollToChapter(hash as Chapter, true);
+      }, 100);
+    }
+  }, []);
 
   // Refresh ScrollTrigger after fonts and images are ready
   useEffect(() => {

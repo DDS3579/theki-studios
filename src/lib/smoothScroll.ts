@@ -21,6 +21,7 @@ function prefersReducedMotion(): boolean {
 
 // Start smooth scrolling
 export function start(): void {
+  // E2: Don't start Lenis if reduced motion is preferred
   if (isRunning || prefersReducedMotion()) return;
 
   lenis = new Lenis({
