@@ -1,8 +1,9 @@
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { Chapter, Photo } from '../../content';
+import { getPhotoSrc } from '../../content';
 import PhotoFrame from './PhotoFrame';
 import {
   CHAPTER_OPENING_LENGTH,
@@ -216,6 +217,34 @@ export default function ChapterRoom({
     return () => ctx.revert();
   }, [photos, totalLength, openingLength]);
 
+  // C2: Preload next photo when current photo's enter window begins
+  useEffect(() => {
+    if (!roomRef.current) return;
+
+    const handleScroll = () => {
+      const rect = roomRef.current!.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      
+      // Calculate which photo is currently in view
+      const scrollProgress = -rect.top / (rect.height - viewportHeight);
+      const photoProgress = (scrollProgress * totalLength - openingLength) / SEGMENT_LENGTH_PER_PHOTO;
+      const currentPhotoIndex = Math.floor(photoProgress);
+      
+      // Preload next photo when current photo is at 40% through its enter window
+      const enterWindowProgress = photoProgress - currentPhotoIndex;
+      if (enterWindowProgress >= 0.4 && currentPhotoIndex < photos.length - 1) {
+        const nextPhoto = photos[currentPhotoIndex + 1];
+        if (nextPhoto) {
+          const img = new Image();
+          img.src = getPhotoSrc(nextPhoto, 'large');
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [photos, totalLength, openingLength]);
+
   return (
     <div
       ref={roomRef}
@@ -245,18 +274,20 @@ export default function ChapterRoom({
           </p>
         </div>
 
-        {/* Photos */}
-        <div className="relative w-full h-full">
-          {photos.map((photo) => (
-            <PhotoFrame
-              key={photo.id}
-              photo={photo}
-              chapter={chapter}
-              chapterIndex={chapterIndex}
-              totalPhotos={photos.length}
-            />
+        {/* C4: Ordered list for structure */}
+        <ol className="relative w-full h-full list-none p-0 m-0">
+          {photos.map((photo, photoIndex) => (
+            <li key={photo.id} className="absolute inset-0">
+              <PhotoFrame
+                photo={photo}
+                chapter={chapter}
+                photoIndex={photoIndex}
+                totalPhotos={photos.length}
+                isFirstChapter={chapterIndex === 0}
+              />
+            </li>
           ))}
-        </div>
+        </ol>
       </div>
     </div>
   );
