@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { chapters, getFeaturedPhotos, copy, type Chapter } from '../content';
 import ChapterRoom from './work/ChapterRoom';
