@@ -36,7 +36,7 @@ Batch 7 focused on optimizing the Hero component and index.html for performance,
   rel="preload" 
   as="image" 
   href="/images/wedding-1-1600.webp" 
-  imagesrcset="/images/wedding-1-1600.webp 1600w, /images/wedding-1-2400.webp 2400w"
+  imagesrcset="/images/wedding-1-800.webp 800w, /images/wedding-1-1600.webp 1600w, /images/wedding-1-2400.webp 2400w"
   imagesizes="100vw"
   fetchpriority="high"
 />
@@ -165,7 +165,7 @@ useEffect(() => {
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Theki Studios — Photography & Film" />
 <meta name="twitter:description" content="Frames worth keeping. Weddings, cars and portraits." />
-<link rel="canonical" href="https://thestudio.co" />
+<link rel="canonical" href="https://theki.com.np" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 ```
 

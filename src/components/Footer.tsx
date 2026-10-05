@@ -1,10 +1,11 @@
 import { socialLinks, contact, copy } from '../content';
+import { scrollToTop } from '../lib/scrollTo';
 
 export default function Footer() {
   // B9.13: Instant jump for back-to-top
   const handleBackToTop = (e: React.MouseEvent) => {
     e.preventDefault();
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    scrollToTop(true);
   };
 
   return (
