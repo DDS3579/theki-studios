@@ -133,6 +133,17 @@ export default function Archive() {
     }
   }, [lightboxPhoto]);
 
+  // Photos in the Work section ask this viewer to open them
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      const photo = allPhotosInDisplayOrder.find((p) => p.id === id);
+      if (photo) openLightbox(photo);
+    };
+    window.addEventListener('theki:open-photo', onOpen);
+    return () => window.removeEventListener('theki:open-photo', onOpen);
+  }, [openLightbox]);
+
   return (
     <section
       ref={sectionRef}
@@ -358,13 +369,16 @@ function JustifiedRows({ photos, onPhotoClick }: {
   return (
     <div ref={containerRef} className="flex flex-col gap-1">
       {rows.map((row, rowIdx) => {
-        const isLastRow = rowIdx === rows.length - 1;
+
         const totalAspect = row.reduce((sum, p) => {
           const [w, h] = getAspect(p);
           return sum + w / h;
         }, 0);
         
-        // B8.2: Calculate row height to fill width exactly (except last row)
+        // A row is stretched to the full width only if, at the target height, it already
+        // fills most of the container. Otherwise it keeps its natural size (left aligned).
+        const naturalWidth = totalAspect * targetHeight + (row.length - 1) * 4;
+        const isLastRow = naturalWidth < containerWidth * 0.85;
         let rowHeight = targetHeight;
         if (!isLastRow && containerWidth > 0) {
           const gapSpace = (row.length - 1) * 4;
