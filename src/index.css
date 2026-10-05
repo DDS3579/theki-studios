@@ -103,6 +103,17 @@
     text-transform: uppercase;
   }
 
+  /* Photo frame: the whole photograph always fits. Width is the smaller of a width limit
+     and (height limit x aspect ratio). Values come from inline custom properties in PhotoFrame. */
+  .photo-frame {
+    width: min(var(--wm), calc(var(--hm) * var(--ar)));
+  }
+  @media (min-width: 768px) {
+    .photo-frame {
+      width: min(var(--wd), calc(var(--hd) * var(--ar)));
+    }
+  }
+
   .reveal {
     opacity: 0;
     transform: translateY(24px);
