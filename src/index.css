@@ -94,15 +94,6 @@
     font-family: var(--font-display);
   }
 
-  .title-card {
-    font-family: var(--font-display);
-    font-weight: 900;
-    font-size: clamp(5rem, 12vw, 16rem);
-    letter-spacing: -0.02em;
-    line-height: 0.9;
-    text-transform: uppercase;
-  }
-
   /* Photo frame: the whole photograph always fits. Width is the smaller of a width limit
      and (height limit x aspect ratio). Values come from inline custom properties in PhotoFrame. */
   .photo-frame {
@@ -125,13 +116,6 @@
     transform: translateY(0);
   }
 
-  .stage-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-  }
-
   .vf-mark {
     position: absolute;
     width: 24px;
@@ -144,37 +128,6 @@
   .vf-mark-tr { top: 0; right: 0; border-top: 1.5px solid; border-right: 1.5px solid; }
   .vf-mark-bl { bottom: 0; left: 0; border-bottom: 1.5px solid; border-left: 1.5px solid; }
   .vf-mark-br { bottom: 0; right: 0; border-bottom: 1.5px solid; border-right: 1.5px solid; }
-
-  .focus-lock {
-    width: 8px;
-    height: 8px;
-    border: 1.5px solid var(--color-brass);
-    /* B0.5: specific properties only */
-    transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
-  }
-  .focus-lock.locked {
-    background: var(--color-brass);
-  }
-  .focus-lock.hunting {
-    animation: focusHunt 0.6s ease-in-out infinite alternate;
-  }
-  @keyframes focusHunt {
-    from { opacity: 0.4; transform: scale(0.8); }
-    to { opacity: 1; transform: scale(1.2); }
-  }
-
-  .progress-tick {
-    width: 6px;
-    height: 6px;
-    border: 1px solid var(--color-stage-muted);
-    border-radius: 50%;
-    /* B0.5: specific properties only */
-    transition: background-color 0.3s var(--ease-focus), border-color 0.3s var(--ease-focus);
-  }
-  .progress-tick.active {
-    background: var(--color-brass);
-    border-color: var(--color-brass);
-  }
 
   /* B0.6: removed .archive-row (unused) */
 
@@ -199,11 +152,3 @@
 
 /* B0.6: removed @custom-variant stage (unused) */
 /* B0.6: removed img { image-rendering: auto } (pointless) */
-/* B0.6: removed .cold-open from print rule (element removed in B7.3) */
-/* B7.3: Removed cold-open from print rule */
-@media print {
-  .stage-canvas,
-  .skip-link {
-    display: none !important;
-  }
-}

@@ -12,44 +12,6 @@ interface State {
   lastResetKey?: string | number; // B12.47: Track last reset key
 }
 
-// B2.7: Error boundary for Stage - falls back to static path
-export class StageErrorBoundary extends React.Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = { hasError: false, error: null, lastResetKey: props.resetKey };
-  }
-
-  // B12.47: Reset on key change
-  static getDerivedStateFromProps(props: Props, state: State): State | null {
-    if (props.resetKey !== state.lastResetKey) {
-      return {
-        hasError: false,
-        error: null,
-        lastResetKey: props.resetKey,
-      };
-    }
-    return null;
-  }
-
-  static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // B12.47: Log error in a single place
-    console.error('Stage error boundary caught:', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      // B2.7: fall back to static path
-      return this.props.fallback || null;
-    }
-
-    return this.props.children;
-  }
-}
-
 // B2.7: Top-level error boundary with styled message
 export class TopLevelErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
