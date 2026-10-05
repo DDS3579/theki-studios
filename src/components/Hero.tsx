@@ -3,14 +3,15 @@ import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { copy, chapters, getPhotosByChapter, getPhotoSrc, getPhotoSrcSet, getHeroPhoto } from '../content';
-import { EASING } from '../lib/motion';
+import { EASE_INTRO } from '../lib/motion';
+import { scrollToChapter, scrollToSection } from '../lib/scrollTo';
 
 gsap.registerPlugin(ScrollTrigger);
 
 export default function Hero() {
   const sectionRef = useRef<HTMLElement>(null);
   const imageRef = useRef<HTMLDivElement>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
+  const darkRef = useRef<HTMLDivElement>(null);
   const headlineRef = useRef<HTMLHeadingElement>(null);
   const supportRef = useRef<HTMLParagraphElement>(null);
   const ctaRef = useRef<HTMLDivElement>(null);
@@ -54,7 +55,7 @@ export default function Hero() {
             opacity: 1,
             duration: 0.8,
             stagger: 0.08,
-            ease: EASING,
+            ease: EASE_INTRO,
           }
         );
       }
@@ -67,7 +68,7 @@ export default function Hero() {
           {
             scale: 1,
             duration: 1.4,
-            ease: EASING,
+            ease: EASE_INTRO,
           },
           0 // Start at same time as headline
         );
@@ -82,7 +83,7 @@ export default function Hero() {
           y: 0,
           duration: 0.7,
           stagger: 0.15,
-          ease: EASING,
+          ease: EASE_INTRO,
         },
         0.7
       );
@@ -90,7 +91,7 @@ export default function Hero() {
       // D1: Parallax on scroll - image drifts 8% slower than page
       if (imageRef.current) {
         gsap.to(imageRef.current, {
-          yPercent: -8,
+          yPercent: 6,
           ease: 'none',
           scrollTrigger: {
             trigger: sectionRef.current,
@@ -101,10 +102,10 @@ export default function Hero() {
         });
       }
 
-      // D1: Darken overlay slightly on scroll
-      if (overlayRef.current) {
-        gsap.to(overlayRef.current, {
-          opacity: 0.3,
+      // D1: Darken the photograph slightly as it scrolls away
+      if (darkRef.current) {
+        gsap.to(darkRef.current, {
+          opacity: 0.45,
           ease: 'none',
           scrollTrigger: {
             trigger: sectionRef.current,
@@ -126,7 +127,7 @@ export default function Hero() {
       aria-label="Introduction"
     >
       {/* Hero background image */}
-      <div ref={imageRef} className="absolute inset-0">
+      <div ref={imageRef} className="absolute inset-x-0 -top-[8%] h-[116%]">
         {heroSrc && (
           <img
             src={heroSrc}
@@ -138,16 +139,16 @@ export default function Hero() {
             width={heroPhoto?.width}
             height={heroPhoto?.height}
             decoding="async"
+            fetchPriority="high"
           />
         )}
       </div>
 
       {/* D1: Darken overlay on scroll */}
       <div
-        ref={overlayRef}
         className="absolute inset-0 bg-[linear-gradient(to_top,rgba(36,26,18,1)_0%,rgba(36,26,18,0.5)_50%,rgba(36,26,18,0.2)_100%),linear-gradient(to_right,rgba(36,26,18,0.6)_0%,transparent_100%)]"
-        style={{ opacity: 1 }}
       />
+      <div ref={darkRef} className="absolute inset-0 bg-stage" style={{ opacity: 0 }} aria-hidden="true" />
 
       {/* Viewfinder corner marks */}
       <div className="absolute inset-6 md:inset-10 lg:inset-14 pointer-events-none" aria-hidden="true">
@@ -197,12 +198,20 @@ export default function Hero() {
           >
             <a
               href="#work"
+              onClick={(e) => {
+                e.preventDefault();
+                scrollToChapter('weddings');
+              }}
               className="inline-block font-sans text-sm font-medium bg-paper text-ink px-7 py-3.5 hover:bg-cream transition-colors duration-200"
             >
               {copy.hero.ctaPrimary}
             </a>
             <a
               href="#contact"
+              onClick={(e) => {
+                e.preventDefault();
+                scrollToSection('contact');
+              }}
               className="inline-block font-sans text-sm font-medium border border-stage-text/30 text-stage-text px-7 py-3.5 hover:border-brass hover:text-brass transition-colors duration-200"
             >
               {copy.hero.ctaSecondary}
