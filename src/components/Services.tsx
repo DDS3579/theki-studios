@@ -1,20 +1,8 @@
 import { services } from '../content';
 import { useScrollReveal } from '../lib/useScrollReveal';
-import { scrollToChapter, scrollToSection } from '../lib/scrollTo';
+import { scrollToChapter, scrollToContact } from '../lib/scrollTo';
 
-// B9.8: Scroll to contact with service preselect
-function scrollToContactWithService(serviceId: string) {
-  scrollToSection('contact');
 
-  // B9.8: Preselect service after scroll
-  setTimeout(() => {
-    const select = document.getElementById('service') as HTMLSelectElement;
-    if (select) {
-      select.value = serviceId;
-      select.focus();
-    }
-  }, 500);
-}
 
 export default function Services() {
   const sectionRef = useScrollReveal<HTMLElement>(0.1);
@@ -27,7 +15,7 @@ export default function Services() {
       scrollToChapter(service.chapter);
     } else {
       // B9.8: Scroll to contact with service preselected
-      scrollToContactWithService(service.id);
+      scrollToContact(service.id);
     }
   };
 
