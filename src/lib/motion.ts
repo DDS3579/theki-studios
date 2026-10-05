@@ -30,3 +30,33 @@ export const LENIS_WHEEL_SPEED = 1;
 
 // Header offset for scroll calculations
 export const HEADER_HEIGHT = 80; // pixels
+
+// GSAP does not understand CSS cubic-bezier strings (EASING above is for CSS only).
+// Use these named GSAP eases instead.
+export const EASE_REVEAL = 'power3.out'; // scrubbed reveals (maps well to scroll)
+export const EASE_SOFT = 'power2.out'; // small fades and drifts
+export const EASE_INTRO = 'expo.out'; // one-shot, time-based intros (Hero)
+
+// Caption fade, as a fraction of one photo segment
+export const CAPTION_FADE = 0.08;
+
+// Closing hold after the last photo, in photo segments
+export const CHAPTER_CLOSING_HOLD = 0.5;
+
+// Total scroll length of a chapter in vh units
+export function chapterLength(photoCount: number): number {
+  return (
+    CHAPTER_OPENING_LENGTH +
+    photoCount * SEGMENT_LENGTH_PER_PHOTO +
+    SEGMENT_LENGTH_PER_PHOTO * CHAPTER_CLOSING_HOLD
+  );
+}
+
+// Time (in the chapter timeline) at the middle of photo i's rest period
+export function photoDwellMid(index: number): number {
+  return (
+    CHAPTER_OPENING_LENGTH +
+    index * SEGMENT_LENGTH_PER_PHOTO +
+    SEGMENT_LENGTH_PER_PHOTO * (ENTER_WINDOW + DWELL_FRACTION / 2)
+  );
+}
