@@ -16,7 +16,36 @@ export default function Header() {
   const [isOverDark, setIsOverDark] = useState(true);
   const [hasScrolled, setHasScrolled] = useState(false);
 
-  // D2: Use ScrollTrigger to detect which section is under the header
+  // Header colour follows the section under it: light text over dark sections,
+  // dark text over light ones. Only the section that BECOMES active sets the theme,
+  // so two triggers can never fight each other.
+  useGSAP(() => {
+    const sections: Array<[string, boolean]> = [
+      ['section[aria-label="Introduction"]', true],
+      ['#work', true],
+      ['#archive', false],
+      ['#services', false],
+      ['#contact', false],
+    ];
+
+    sections.forEach(([selector, dark]) => {
+      ScrollTrigger.create({
+        trigger: selector,
+        start: 'top 40px',
+        end: 'bottom 40px',
+        onToggle: (self) => {
+          if (self.isActive) setIsOverDark(dark);
+        },
+      });
+    });
+
+    // Solid header background only after the first 40px of scroll
+    ScrollTrigger.create({
+      start: 40,
+      end: 'max',
+      onToggle: (self) => setHasScrolled(self.isActive),
+    });
+  }, []);
   useGSAP(() => {
     if (!headerRef.current) return;
 
