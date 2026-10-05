@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from 'react';
+
 // Simplified capability detection
 // Only tracks reduced motion and data saver preferences
 
@@ -66,6 +68,15 @@ class CapabilityStore {
 }
 
 export const capabilityStore = new CapabilityStore();
+
+// React hook: re-renders if the visitor changes the reduced-motion setting while the page is open
+export function useReducedMotion(): boolean {
+  return useSyncExternalStore(
+    (onChange) => capabilityStore.subscribe(() => onChange()),
+    () => capabilityStore.get().reducedMotion,
+    () => false
+  );
+}
 
 // Convenience function for backwards compatibility
 export function detectCapabilities(): Capabilities {
