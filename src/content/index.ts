@@ -2,6 +2,8 @@
 // All content lives here, never inline in components.
 // B1.1–B1.7: local images, real dimensions, purpose-based helpers, pre-computed lists.
 
+import { extraPhotos } from './morePhotos';
+
 export type Chapter = 'weddings' | 'cars' | 'photoshoots';
 
 // B1.3: image purposes — each requested only where needed
@@ -310,7 +312,7 @@ function buildChapterMap<T>(fn: (ch: Chapter) => T): ChapterMap<T> {
 export const photosByChapter: ChapterMap<readonly Photo[]> = Object.freeze(
   buildChapterMap((ch) =>
     Object.freeze(
-      photos.filter((p) => p.chapter === ch).sort((a, b) => a.order - b.order)
+      [...photos, ...extraPhotos].filter((p) => p.chapter === ch).sort((a, b) => a.order - b.order)
     )
   )
 );
