@@ -71,18 +71,18 @@ export const flags = {
 
 // [FILL] Social links — add real URLs when available
 export const socialLinks = {
-  instagram: '', // [FILL]
-  facebook: '', // [FILL]
-  youtube: '', // [FILL]
+  instagram: 'https://www.instagram.com/yourhandle',
+  facebook: 'https://www.facebook.com/yourpage',
+  youtube: 'https://www.youtube.com/@yourchannel',
 };
 
 // [FILL] Contact info
 export const contact = {
-  email: '', // [FILL]
-  phone: '', // [FILL]
-  whatsapp: '', // [FILL]
-  location: '', // [FILL]
-  formEndpoint: '', // [FILL] Formspree or Web3Forms URL
+  email: 'hello@yourdomain.com',
+  phone: '+977 98XXXXXXXX',
+  whatsapp: '+977 98XXXXXXXX', // with country code; the site strips spaces and symbols
+  location: 'Your city, Nepal',
+  formEndpoint: 'https://formspree.io/f/xxxxxxxx',
 };
 
 // Copy
