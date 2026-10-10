@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
-import Work from './components/Work';
-import Archive from './components/Archive';
+import Wall from './components/Wall';
 import Services from './components/Services';
 import Contact from './components/Contact';
 import Footer from './components/Footer';
@@ -10,10 +9,9 @@ import { TopLevelErrorBoundary } from './components/ErrorBoundary';
 import { start as startSmoothScroll, destroy as destroySmoothScroll } from './lib/smoothScroll';
 
 export default function App() {
-  // Initialize smooth scroll on mount
+  // Smooth scrolling for the whole page
   useEffect(() => {
     startSmoothScroll();
-    
     return () => {
       destroySmoothScroll();
     };
@@ -27,35 +25,16 @@ export default function App() {
           Skip to content
         </a>
 
-        {/* Header */}
         <Header />
 
-        {/* Main content */}
         <main id="main-content" tabIndex={-1}>
-          {/* Hero - the first frame */}
+          {/* The hero stays pinned while the wall slides up over it */}
           <Hero />
-
-          {/* Work section - DOM-based scroll gallery */}
-          <Work />
-
-          {/* Transition: dark to light — the room brightens */}
-          <div className="relative h-32 md:h-48 bg-linear-to-b from-stage to-paper" aria-hidden="true">
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 font-mono text-[9px] text-ink-soft/40 uppercase tracking-[0.3em]">
-              — Archive —
-            </div>
-          </div>
-
-          {/* Archive - dense, editorial */}
-          <Archive />
-
-          {/* Services - clean index */}
+          <Wall />
           <Services />
-
-          {/* Contact - the final scene */}
           <Contact />
         </main>
 
-        {/* Footer */}
         <Footer />
       </div>
     </TopLevelErrorBoundary>
