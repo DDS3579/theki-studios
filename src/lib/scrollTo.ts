@@ -1,42 +1,33 @@
 // One place for every scroll jump on the site.
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { Chapter } from '../content';
-import { getFeaturedPhotos } from '../content';
 import { scrollTo as smoothScrollTo, scrollToTop as smoothScrollToTop } from './smoothScroll';
-import { HEADER_HEIGHT, chapterLength, photoDwellMid } from './motion';
+import { HEADER_HEIGHT } from './motion';
 
-// Very long jumps are instant (they would otherwise fly through ten screens of animation).
-function go(y: number, immediate = false): void {
-  const far = Math.abs(window.scrollY - y) > window.innerHeight * 6;
-  smoothScrollTo(y, { immediate: immediate || far });
+export type WallFilter = 'all' | Chapter;
+
+// The Work Wall listens for this event to change its filter.
+export const WALL_FILTER_EVENT = 'theki:wall-filter';
+
+function absoluteTop(el: HTMLElement): number {
+  return el.getBoundingClientRect().top + window.scrollY;
 }
 
-// Exact scroll range of a chapter, read from its ScrollTrigger (falls back to the element).
-function chapterRange(chapter: Chapter): { start: number; end: number } | null {
-  const st = ScrollTrigger.getById(`chapter-${chapter}`);
-  if (st) return { start: st.start, end: st.end };
-  const el = document.getElementById(`chapter-${chapter}`);
-  if (!el) return null;
-  const top = el.getBoundingClientRect().top + window.scrollY;
-  return { start: top, end: top + el.offsetHeight - window.innerHeight };
-}
-
-export function scrollToChapter(chapter: Chapter, immediate = false): void {
-  const range = chapterRange(chapter);
-  if (range) go(range.start, immediate);
-}
-
-export function scrollToPhoto(chapter: Chapter, index: number, immediate = false): void {
-  const range = chapterRange(chapter);
-  if (!range) return;
-  const len = chapterLength(getFeaturedPhotos(chapter).length);
-  go(range.start + (photoDwellMid(index) / len) * (range.end - range.start), immediate);
-}
-
+// Scroll so that the top of a section sits just under the fixed header.
 export function scrollToSection(sectionId: string, immediate = false): void {
   const el = document.getElementById(sectionId);
   if (!el) return;
-  smoothScrollTo(el, { offset: -HEADER_HEIGHT, immediate });
+  smoothScrollTo(Math.max(0, absoluteTop(el) - HEADER_HEIGHT), { immediate });
+}
+
+// Show the Work Wall, optionally filtered to one chapter.
+export function scrollToWork(filter: WallFilter = 'all', immediate = false): void {
+  window.dispatchEvent(new CustomEvent<WallFilter>(WALL_FILTER_EVENT, { detail: filter }));
+  scrollToSection('work', immediate);
+}
+
+// Kept so Hero, Header and Services keep working: a chapter now means "wall filtered to it".
+export function scrollToChapter(chapter: Chapter, immediate = false): void {
+  scrollToWork(chapter, immediate);
 }
 
 // Scroll to the form and pre-select a service (service ids match chapter names).
