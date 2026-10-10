@@ -92,7 +92,7 @@ export default function Header() {
             </a>
 
             {/* Desktop nav */}
-            <nav className="hidden md:flex items-center gap-8" aria-label="Main navigation">
+            <nav className="hidden md:flex items-center gap-6 lg:gap-8" aria-label="Main navigation">
               <a
                 href="#work"
                 onClick={(e) => {
@@ -102,6 +102,16 @@ export default function Header() {
                 className={`${navLink} ${textColor}`}
               >
                 Work
+              </a>
+              <a
+                href="#about"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToSection('about');
+                }}
+                className={`${navLink} ${textColor}`}
+              >
+                About
               </a>
               <a
                 href="#services"
@@ -180,6 +190,9 @@ export default function Header() {
           <nav className="flex flex-col gap-8" aria-label="Mobile navigation">
             <a href="#work" onClick={fromMenu(() => scrollToWork('all'))} className={mobileLink}>
               Work
+            </a>
+            <a href="#about" onClick={fromMenu(() => scrollToSection('about'))} className={mobileLink}>
+              About
             </a>
             <a href="#services" onClick={fromMenu(() => scrollToSection('services'))} className={mobileLink}>
               Services

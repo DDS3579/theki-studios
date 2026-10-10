@@ -118,12 +118,12 @@ export default function Viewer({ photos, openId, onChange }: ViewerProps) {
               alt={photo.alt}
               width={w}
               height={h}
-              className="max-h-[calc(100dvh-10rem)] max-w-full object-contain"
+              className="max-h-[calc(100dvh-10rem)] max-w-full object-contain [@media(max-height:520px)]:max-h-[calc(100dvh-5.5rem)]"
             />
           </div>
 
           <div className="flex items-end justify-between gap-6 px-5 py-4 md:px-10 md:py-6">
-            <div className="min-w-0">
+            <div className="min-w-0 [@media(max-height:520px)]:hidden">
               <p className="truncate font-mono text-[12px] uppercase tracking-[0.14em] text-stage-text">
                 {captionOf(photo)}
               </p>

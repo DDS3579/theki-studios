@@ -5,20 +5,23 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { allPhotosInDisplayOrder, chapters, copy, flags, getAspect, getPhotoSrc, getPhotoSrcSet } from '../content';
 import type { Photo } from '../content';
-import { WALL_FILTER_EVENT, scrollToContact } from '../lib/scrollTo';
+import { HEADER_HEIGHT } from '../lib/motion';
+import { WALL_FILTER_EVENT, scrollToContact, scrollToSection } from '../lib/scrollTo';
 import type { WallFilter } from '../lib/scrollTo';
 import Viewer from './Viewer';
 
 gsap.registerPlugin(ScrollTrigger);
 
-// ─── TUNING KNOBS (change only these numbers to adjust the feel) ─────────────
-const DRIFT_VH_DESKTOP = 12; // each column drifts +/- this many vh over the whole pass (bigger = livelier)
-const DRIFT_VH_TABLET = 6; // same, for the 2-column tablet layout
-const PAD_VH = 16; // empty space above and below the columns (must stay larger than the drift)
-const DIM_OPACITY = 0.22; // photos outside the selected chapter fade to this
-// ─────────────────────────────────────────────────────────────────────────────
-
 const PHOTOS: readonly Photo[] = allPhotosInDisplayOrder.filter((p) => p.featured);
+
+// ─── TUNING KNOBS (change only these numbers to adjust the feel) ─────────────
+// Drift grows by itself as you add photos, so a longer wall still feels alive. (12 with 10 photos, 24 at 40+)
+const DRIFT_VH_DESKTOP = Math.min(24, Math.max(12, 8 + PHOTOS.length * 0.4));
+const DRIFT_VH_TABLET = DRIFT_VH_DESKTOP / 2;
+const PAD_VH = DRIFT_VH_DESKTOP + 4; // empty space above and below the columns (must stay larger than the drift)
+const DIM_OPACITY = 0.22; // few photos: the other chapters fade to this
+const FILTER_REFLOW_ABOVE = 16; // more photos than this: choosing a chapter rebuilds the wall with only that chapter
+// ─────────────────────────────────────────────────────────────────────────────
 
 const FILTERS: { id: WallFilter; label: string; count: number }[] = [
   { id: 'all', label: 'All', count: PHOTOS.length },
@@ -30,7 +33,7 @@ const FILTERS: { id: WallFilter; label: string; count: number }[] = [
 ];
 
 const SIZES: Record<number, string> = {
-  4: '24vw',
+  4: '(min-width: 1700px) 380px, 24vw',
   2: '46vw',
   1: '(max-width: 767px) 92vw, 80vw',
 };
@@ -41,8 +44,8 @@ type WallItem =
   | { kind: 'cta'; key: string; order: number; weight: number };
 
 // weight = tile height in "column widths" (photo height / width, plus caption and gap)
-function buildItems(): WallItem[] {
-  const items: WallItem[] = PHOTOS.map((photo, i) => {
+function buildItems(list: readonly Photo[]): WallItem[] {
+  const items: WallItem[] = list.map((photo, i) => {
     const [w, h] = getAspect(photo);
     return { kind: 'photo', key: photo.id, order: i, weight: h / w + 0.25, photo };
   });
@@ -115,13 +118,13 @@ function distribute(items: readonly WallItem[], n: number): WallItem[][] {
   return cols;
 }
 
-const ITEMS = buildItems();
-const layoutCache = new Map<number, WallItem[][]>();
-function getColumns(n: number): WallItem[][] {
-  let cols = layoutCache.get(n);
+const layoutCache = new Map<string, WallItem[][]>();
+function getColumns(n: number, list: readonly Photo[], key: string): WallItem[][] {
+  const cacheKey = `${n}|${key}`;
+  let cols = layoutCache.get(cacheKey);
   if (!cols) {
-    cols = distribute(ITEMS, n);
-    layoutCache.set(n, cols);
+    cols = distribute(buildItems(list), n);
+    layoutCache.set(cacheKey, cols);
   }
   return cols;
 }
@@ -257,11 +260,25 @@ export default function Wall() {
   const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
   const columns = wide ? 4 : mid ? 2 : 1;
 
-  const cols = useMemo(() => getColumns(columns), [columns]);
+  // Few photos: all stay on the wall and the other chapters fade. Many photos: the wall is rebuilt for the chapter.
+  const reflow = PHOTOS.length > FILTER_REFLOW_ABOVE;
+  const layoutKey = reflow ? filter : 'all';
   const visiblePhotos = useMemo(
     () => (filter === 'all' ? PHOTOS : PHOTOS.filter((p) => p.chapter === filter)),
     [filter]
   );
+  const shown = reflow ? visiblePhotos : PHOTOS;
+  const cols = useMemo(() => getColumns(columns, shown, layoutKey), [columns, shown, layoutKey]);
+
+  const selectFilter = (next: WallFilter) => {
+    setFilter(next);
+    if (!reflow) return;
+    // The wall just got shorter or longer: if the visitor is inside it, bring them back to its top
+    window.requestAnimationFrame(() => {
+      const grid = document.getElementById('wall-grid');
+      if (grid && grid.getBoundingClientRect().top < HEADER_HEIGHT) scrollToSection('wall-grid', true);
+    });
+  };
 
   // Other parts of the site (Services, header, hero) can ask the wall to filter
   useEffect(() => {
@@ -302,10 +319,10 @@ export default function Wall() {
         );
       });
     },
-    { scope: sectionRef, dependencies: [reduced, columns] }
+    { scope: sectionRef, dependencies: [reduced, columns, layoutKey] }
   );
 
-  const padVh = columns > 1 ? PAD_VH : 4;
+  const padVh = columns > 1 ? PAD_VH : 8;
 
   return (
     <section
@@ -344,7 +361,7 @@ export default function Wall() {
                   key={f.id}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => setFilter(f.id)}
+                  onClick={() => selectFilter(f.id)}
                   className={`border px-4 py-2.5 font-mono text-[12px] uppercase tracking-[0.16em] transition-colors duration-200 ${
                     active ? 'border-ink bg-ink text-sand' : 'border-ink/30 text-ink hover:border-ink'
                   }`}
@@ -358,19 +375,24 @@ export default function Wall() {
 
         {/* Columns */}
         <div
-          className="grid items-start gap-x-[2vw]"
+          id="wall-grid"
+          className="grid items-start"
           style={{
             gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            columnGap: 'clamp(12px, 2vw, 32px)',
             paddingTop: `${padVh}vh`,
             paddingBottom: `${padVh}vh`,
           }}
         >
           {cols.map((col, ci) => (
             <div
-              key={`${columns}-${ci}`}
+              key={`${columns}-${layoutKey}-${ci}`}
               data-col
-              className="flex flex-col gap-[7vw] md:gap-[2.4vw]"
-              style={columns > 1 && !reduced ? { willChange: 'transform' } : undefined}
+              className="flex flex-col"
+              style={{
+                rowGap: columns === 1 ? 'clamp(28px, 7vw, 56px)' : 'clamp(14px, 2.4vw, 38px)',
+                ...(columns > 1 && !reduced ? { willChange: 'transform' } : {}),
+              }}
             >
               {col.map((it, k) =>
                 it.kind === 'photo' ? (
@@ -379,7 +401,7 @@ export default function Wall() {
                     photo={it.photo}
                     columns={columns}
                     index={k}
-                    dimmed={filter !== 'all' && it.photo.chapter !== filter}
+                    dimmed={!reflow && filter !== 'all' && it.photo.chapter !== filter}
                     instant={reduced}
                     onOpen={setOpenId}
                   />

@@ -2,6 +2,8 @@
 // All content lives here, never inline in components.
 // B1.1–B1.7: local images, real dimensions, purpose-based helpers, pre-computed lists.
 
+import { extraPhotos } from './morePhotos';
+
 export type Chapter = 'weddings' | 'cars' | 'photoshoots';
 
 // B1.3: image purposes — each requested only where needed
@@ -69,18 +71,18 @@ export const flags = {
 
 // [FILL] Social links — add real URLs when available
 export const socialLinks = {
-  instagram: '', // [FILL]
-  facebook: '', // [FILL]
-  youtube: '', // [FILL]
+  instagram: 'https://www.instagram.com/yourhandle',
+  facebook: 'https://www.facebook.com/yourpage',
+  youtube: 'https://www.youtube.com/@yourchannel',
 };
 
 // [FILL] Contact info
 export const contact = {
-  email: '', // [FILL]
-  phone: '', // [FILL]
-  whatsapp: '', // [FILL]
-  location: '', // [FILL]
-  formEndpoint: '', // [FILL] Formspree or Web3Forms URL
+  email: 'hello@yourdomain.com',
+  phone: '+977 98XXXXXXXX',
+  whatsapp: '+977 98XXXXXXXX', // with country code; the site strips spaces and symbols
+  location: 'Your city, Nepal',
+  formEndpoint: 'https://formspree.io/f/xxxxxxxx',
 };
 
 // Copy
@@ -310,7 +312,7 @@ function buildChapterMap<T>(fn: (ch: Chapter) => T): ChapterMap<T> {
 export const photosByChapter: ChapterMap<readonly Photo[]> = Object.freeze(
   buildChapterMap((ch) =>
     Object.freeze(
-      photos.filter((p) => p.chapter === ch).sort((a, b) => a.order - b.order)
+      [...photos, ...extraPhotos].filter((p) => p.chapter === ch).sort((a, b) => a.order - b.order)
     )
   )
 );
