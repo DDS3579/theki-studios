@@ -1,135 +1,80 @@
 import { useEffect, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { socialLinks, copy } from '../content';
 import { lockScroll, unlockScroll } from '../lib/scrollLock';
-import { scrollToChapter, scrollToSection, scrollToTop } from '../lib/scrollTo';
+import { scrollToContact, scrollToSection, scrollToTop, scrollToWork } from '../lib/scrollTo';
 
 gsap.registerPlugin(ScrollTrigger);
+
+const navLink = 'font-sans text-sm transition-colors duration-200 hover:text-brass';
+const mobileLink =
+  'font-display text-4xl font-bold uppercase tracking-tight text-ink hover:text-brass transition-colors';
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const headerRef = useRef<HTMLElement>(null);
-  const [isOverDark, setIsOverDark] = useState(true);
+  const [isOverDark, setIsOverDark] = useState(true); // true while the dark hero is under the header
   const [hasScrolled, setHasScrolled] = useState(false);
 
-  // Header colour follows the section under it: light text over dark sections,
-  // dark text over light ones. Only the section that BECOMES active sets the theme,
-  // so two triggers can never fight each other.
+  // Only the hero is dark. Once the light wall slides up under the header, switch to dark text.
   useGSAP(() => {
-    const sections: Array<[string, boolean]> = [
-      ['section[aria-label="Introduction"]', true],
-      ['#work', true],
-      ['#archive', false],
-      ['#services', false],
-      ['#contact', false],
-    ];
-
-    sections.forEach(([selector, dark]) => {
-      ScrollTrigger.create({
-        trigger: selector,
-        start: 'top 40px',
-        end: 'bottom 40px',
-        onToggle: (self) => {
-          if (self.isActive) setIsOverDark(dark);
-        },
-      });
-    });
-
-    // Solid header background only after the first 40px of scroll
     ScrollTrigger.create({
-      start: 40,
-      end: 'max',
-      onToggle: (self) => setHasScrolled(self.isActive),
+      trigger: 'section[aria-label="Introduction"]',
+      start: 'top top',
+      end: 'bottom 40px',
+      onLeave: () => setIsOverDark(false),
+      onEnterBack: () => setIsOverDark(true),
     });
   }, []);
-  useGSAP(() => {
-    if (!headerRef.current) return;
 
-    const ctx = gsap.context(() => {
-      // Create ScrollTrigger for hero section
-      ScrollTrigger.create({
-        trigger: 'section[aria-label="Introduction"]',
-        start: 'top top',
-        end: 'bottom top',
-        onEnter: () => setIsOverDark(true),
-        onLeave: () => setIsOverDark(false),
-        onEnterBack: () => setIsOverDark(true),
-        onLeaveBack: () => setIsOverDark(false),
-      });
-
-      // Create ScrollTrigger for work section
-      ScrollTrigger.create({
-        trigger: '#work',
-        start: 'top top',
-        end: 'bottom top',
-        onEnter: () => setIsOverDark(true),
-        onLeave: () => setIsOverDark(false),
-        onEnterBack: () => setIsOverDark(true),
-        onLeaveBack: () => setIsOverDark(false),
-      });
-
-      // Track scroll position for background
-      ScrollTrigger.create({
-        trigger: 'body',
-        start: 'top top',
-        end: '99999px top',
-        onUpdate: (self) => {
-          setHasScrolled(self.scroll() > 40);
-        },
-      });
-    });
-
-    return () => ctx.revert();
-  }, []);
-
+  // Solid header background after the first 40px of scrolling
   useEffect(() => {
-    if (menuOpen) {
-      if (dialogRef.current && !dialogRef.current.open) {
-        dialogRef.current.showModal();
-      }
-      lockScroll('mobileMenu');
-    } else {
-      if (dialogRef.current?.open) {
-        dialogRef.current.close();
-      }
-      unlockScroll('mobileMenu');
-    }
-    
+    const onScroll = () => setHasScrolled(window.scrollY > 40);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Mobile menu dialog
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || !menuOpen) return;
+    if (!dialog.open) dialog.showModal();
+    lockScroll('mobileMenu');
     return () => {
-      if (menuOpen) {
-        unlockScroll('mobileMenu');
-      }
+      unlockScroll('mobileMenu');
+      if (dialog.open) dialog.close();
     };
   }, [menuOpen]);
 
-  // B6.6: Close menu when window grows past mobile breakpoint
+  // Close the menu if the window grows past the mobile breakpoint
   useEffect(() => {
     const mediaQuery = window.matchMedia('(min-width: 768px)');
-    
     const handleChange = (e: MediaQueryListEvent) => {
-      if (e.matches && menuOpen) {
-        setMenuOpen(false);
-      }
+      if (e.matches) setMenuOpen(false);
     };
-
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [menuOpen]);
+  }, []);
 
   const textColor = isOverDark ? 'text-stage-text' : 'text-ink';
+
+  // Close the menu first, then scroll (the page is locked while the menu is open)
+  const fromMenu = (action: () => void) => (e: ReactMouseEvent) => {
+    e.preventDefault();
+    setMenuOpen(false);
+    window.setTimeout(action, 60);
+  };
 
   return (
     <>
       <header
-        ref={headerRef}
         className={`fixed top-0 left-0 right-0 z-50 transition-colors duration-300 ${
-          hasScrolled && !isOverDark
-            ? 'bg-paper border-b border-border'
-            : 'bg-transparent'
+          hasScrolled && !isOverDark ? 'bg-paper border-b border-border' : 'bg-transparent'
         }`}
       >
         <div className="max-w-[1600px] mx-auto px-[clamp(1.25rem,4vw,4rem)]">
@@ -152,21 +97,11 @@ export default function Header() {
                 href="#work"
                 onClick={(e) => {
                   e.preventDefault();
-                  scrollToChapter('weddings');
+                  scrollToWork('all');
                 }}
-                className={`font-sans text-sm transition-colors duration-200 hover:text-brass ${textColor}`}
+                className={`${navLink} ${textColor}`}
               >
                 Work
-              </a>
-              <a
-                href="#archive"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollToSection('archive');
-                }}
-                className={`font-sans text-sm transition-colors duration-200 hover:text-brass ${textColor}`}
-              >
-                Archive
               </a>
               <a
                 href="#services"
@@ -174,7 +109,7 @@ export default function Header() {
                   e.preventDefault();
                   scrollToSection('services');
                 }}
-                className={`font-sans text-sm transition-colors duration-200 hover:text-brass ${textColor}`}
+                className={`${navLink} ${textColor}`}
               >
                 Services
               </a>
@@ -184,7 +119,7 @@ export default function Header() {
                   e.preventDefault();
                   scrollToSection('contact');
                 }}
-                className={`font-sans text-sm transition-colors duration-200 hover:text-brass ${textColor}`}
+                className={`${navLink} ${textColor}`}
               >
                 Contact
               </a>
@@ -192,7 +127,7 @@ export default function Header() {
                 href="#contact"
                 onClick={(e) => {
                   e.preventDefault();
-                  scrollToSection('contact');
+                  scrollToContact();
                 }}
                 className={`font-sans text-sm border px-5 py-2.5 transition-colors duration-200 ${
                   isOverDark
@@ -235,11 +170,7 @@ export default function Header() {
             <span className="font-display text-xl font-bold uppercase tracking-tight text-ink">
               {copy.studioName}
             </span>
-            <button
-              onClick={() => setMenuOpen(false)}
-              className="p-3 text-ink"
-              aria-label="Close menu"
-            >
+            <button onClick={() => setMenuOpen(false)} className="p-3 text-ink" aria-label="Close menu">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <line x1="4" y1="4" x2="16" y2="16" />
                 <line x1="16" y1="4" x2="4" y2="16" />
@@ -247,59 +178,20 @@ export default function Header() {
             </button>
           </div>
           <nav className="flex flex-col gap-8" aria-label="Mobile navigation">
-            <a
-              href="#work"
-              onClick={(e) => {
-                e.preventDefault();
-                setMenuOpen(false);
-                setTimeout(() => scrollToChapter('weddings'), 50);
-              }}
-              className="font-display text-4xl font-bold uppercase tracking-tight text-ink hover:text-brass transition-colors"
-            >
+            <a href="#work" onClick={fromMenu(() => scrollToWork('all'))} className={mobileLink}>
               Work
             </a>
-            <a
-              href="#archive"
-              onClick={(e) => {
-                e.preventDefault();
-                setMenuOpen(false);
-                setTimeout(() => scrollToSection('archive'), 50);
-              }}
-              className="font-display text-4xl font-bold uppercase tracking-tight text-ink hover:text-brass transition-colors"
-            >
-              Archive
-            </a>
-            <a
-              href="#services"
-              onClick={(e) => {
-                e.preventDefault();
-                setMenuOpen(false);
-                setTimeout(() => scrollToSection('services'), 50);
-              }}
-              className="font-display text-4xl font-bold uppercase tracking-tight text-ink hover:text-brass transition-colors"
-            >
+            <a href="#services" onClick={fromMenu(() => scrollToSection('services'))} className={mobileLink}>
               Services
             </a>
-            <a
-              href="#contact"
-              onClick={(e) => {
-                e.preventDefault();
-                setMenuOpen(false);
-                setTimeout(() => scrollToSection('contact'), 50);
-              }}
-              className="font-display text-4xl font-bold uppercase tracking-tight text-ink hover:text-brass transition-colors"
-            >
+            <a href="#contact" onClick={fromMenu(() => scrollToSection('contact'))} className={mobileLink}>
               Contact
             </a>
           </nav>
           <div className="mt-auto pt-8 border-t border-border">
             <a
               href="#contact"
-              onClick={(e) => {
-                e.preventDefault();
-                setMenuOpen(false);
-                setTimeout(() => scrollToSection('contact'), 50);
-              }}
+              onClick={fromMenu(() => scrollToContact())}
               className="inline-block font-sans text-sm border border-ink/20 text-ink px-6 py-3 hover:border-brass hover:text-brass transition-colors"
             >
               Enquire
@@ -307,35 +199,17 @@ export default function Header() {
             {(socialLinks.instagram || socialLinks.facebook || socialLinks.youtube) && (
               <div className="flex flex-wrap gap-6 mt-6">
                 {socialLinks.instagram && (
-                  <a 
-                    href={socialLinks.instagram} 
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-ink-soft hover:text-brass text-sm transition-colors" 
-                    aria-label="Instagram"
-                  >
+                  <a href={socialLinks.instagram} target="_blank" rel="noopener noreferrer" className="text-ink-soft hover:text-brass text-sm transition-colors">
                     Instagram
                   </a>
                 )}
                 {socialLinks.facebook && (
-                  <a 
-                    href={socialLinks.facebook} 
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-ink-soft hover:text-brass text-sm transition-colors" 
-                    aria-label="Facebook"
-                  >
+                  <a href={socialLinks.facebook} target="_blank" rel="noopener noreferrer" className="text-ink-soft hover:text-brass text-sm transition-colors">
                     Facebook
                   </a>
                 )}
                 {socialLinks.youtube && (
-                  <a 
-                    href={socialLinks.youtube} 
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-ink-soft hover:text-brass text-sm transition-colors" 
-                    aria-label="YouTube"
-                  >
+                  <a href={socialLinks.youtube} target="_blank" rel="noopener noreferrer" className="text-ink-soft hover:text-brass text-sm transition-colors">
                     YouTube
                   </a>
                 )}

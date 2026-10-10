@@ -11,6 +11,8 @@
   --color-cream: #FEF8EA;
   --color-alert: #B2392B;
   --color-stage: #241A12;
+  --color-sand: #DDCDB0;
+  --color-sand-deep: #CFBE9F;
   --color-stage-text: #F0E8D1;
   /* B0.4: solid colour — stage-text at 72 % blended over stage, no extra alpha */
   --color-stage-muted: #B7AE9B;
@@ -152,3 +154,25 @@
 
 /* B0.6: removed @custom-variant stage (unused) */
 /* B0.6: removed img { image-rendering: auto } (pointless) */
+
+/* Work Wall: curtain reveal and slow settle for each photograph */
+@layer components {
+  .wall-mask {
+    clip-path: inset(100% 0 0 0);
+    transition: clip-path 1.1s var(--ease-focus);
+  }
+  .wall-mask[data-in='1'] {
+    clip-path: inset(0 0 0 0);
+  }
+  .wall-img {
+    transform: scale(1.12);
+    transition: transform 1.6s var(--ease-focus);
+  }
+  .wall-mask[data-in='1'] .wall-img {
+    transform: scale(1);
+  }
+  .wall-photo:hover:not(:disabled) .wall-mask[data-in='1'] .wall-img {
+    transform: scale(1.035);
+    transition-duration: 0.9s;
+  }
+}

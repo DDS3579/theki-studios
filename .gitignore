@@ -30,3 +30,5 @@ pnpm-debug.log*
 
 # Next.js (legacy, not used here but harmless)
 .next/
+
+.freebuff/

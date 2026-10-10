@@ -123,7 +123,7 @@ export default function Hero() {
   return (
     <section
       ref={sectionRef}
-      className="relative h-[100svh] w-full overflow-hidden bg-stage"
+      className="sticky top-0 h-[100svh] w-full overflow-hidden bg-stage"
       aria-label="Introduction"
     >
       {/* Hero background image */}
