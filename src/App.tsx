@@ -28,9 +28,11 @@ export default function App() {
         <Header />
 
         <main id="main-content" tabIndex={-1}>
-          {/* The hero stays pinned while the wall slides up over it */}
-          <Hero />
-          <Wall />
+          {/* The hero stays pinned only while the wall slides up over it */}
+          <div className="relative">
+            <Hero />
+            <Wall />
+          </div>
           <Services />
           <Contact />
         </main>
