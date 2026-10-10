@@ -33,3 +33,5 @@ pnpm-debug.log*
 
 .freebuff/
 photos-original/
+
+.env.local
